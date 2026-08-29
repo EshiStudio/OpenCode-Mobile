@@ -1,0 +1,6 @@
+# The provider catalog is generated from https://models.dev/api.json, not written
+# by hand — keep it out of the language stats and collapse it in diffs.
+src/catalog.ts linguist-generated=true
+
+# Lock files are noise in review for the same reason.
+package-lock.json linguist-generated=true
