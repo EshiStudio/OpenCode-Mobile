@@ -26,7 +26,8 @@ import { SettingsScreen } from "./settings";
 import { Composer } from "./composer";
 import { Avatar, Wordmark } from "./ui";
 import { catalogModels, presetName } from "./local-ai";
-import { CLOUD_IDS, cloudName } from "./clouds";
+import { CLOUD_IDS, CloudId, cloudName } from "./clouds";
+import { LocalProject } from "./storage";
 import { Lang, t } from "./i18n";
 import { ProviderPreset } from "./storage";
 import { PermissionRequest, ProviderWithModels, SessionInfo, StoredMessage } from "./types";
@@ -381,9 +382,24 @@ export function ChatScreen({
       <BottomSheet theme={theme} open={sheet === "project"} title={t("chat.project")} onClose={() => setSheet(null)}>
         <RowList
           theme={theme}
-          rows={storageRows(store.cloudTokens, store.cloudRoots, store.preferredCloud)}
+          rows={storageRows(
+            store.cloudTokens,
+            store.cloudRoots,
+            store.local.activeProject ? `project:${store.local.activeProject}` : store.preferredCloud,
+            store.local.projects,
+          )}
           onPick={(r) => {
-            store.setPreferredCloud(r.id);
+            // Picking a project scopes the sessions to it and follows its folder
+            // to whichever storage holds it; picking a storage clears that.
+            if (r.id.startsWith("project:")) {
+              const id = r.id.slice("project:".length);
+              const project = store.local.projects.find((p) => p.id === id);
+              store.setActiveProject(id);
+              if (project) store.setPreferredCloud(project.cloud);
+            } else {
+              store.setActiveProject("");
+              store.setPreferredCloud(r.id);
+            }
             setSheet(null);
           }}
         />
@@ -712,10 +728,18 @@ function attachRows(): SheetRow[] {
 }
 
 /** Where work is stored: the device, plus every attached cloud. */
+/**
+ * Where work is kept: the device, each attached cloud, and every project.
+ *
+ * A project is a folder in one of those, so it belongs in the same list — its
+ * row says which storage it lives in, so "MyProject" on the device and one on
+ * a disk are told apart at a glance.
+ */
 function storageRows(
   clouds: Record<string, string>,
   roots: Record<string, string>,
   picked: string,
+  projects: LocalProject[],
 ): SheetRow[] {
   const rows: SheetRow[] = [
     {
@@ -734,6 +758,16 @@ function storageRows(
       desc: roots[id] || "opencode",
       selected: picked === id,
       brand: { id, colored: true },
+    });
+  }
+  for (const project of projects) {
+    rows.push({
+      id: `project:${project.id}`,
+      name: project.name,
+      desc: project.cloud ? cloudName(project.cloud as CloudId) : t("chat.storage.device"),
+      groupOf: t("project.title"),
+      selected: picked === `project:${project.id}`,
+      icon: "folder",
     });
   }
   return rows;
