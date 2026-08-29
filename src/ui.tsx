@@ -1,5 +1,6 @@
 import React from "react";
 import { ActivityIndicator, Animated, Pressable, StyleSheet, Text, View, ViewStyle } from "react-native";
+import { Rect, Svg } from "react-native-svg";
 import { BrandIcon, Icon, IconName } from "./icons";
 import { Theme } from "./theme";
 
@@ -109,10 +110,11 @@ export function Spinner({ size = 13, color }: { size?: number; color: string }) 
   return <ActivityIndicator size="small" color={color} style={{ width: size, height: size, transform: [{ scale: size / 20 }] }} />;
 }
 
-/** Pixel size of one cell in the wordmark, and how many make up a glyph. */
+/** Geometry of the pixel wordmark: cell size, glyph box, spacing. */
 const WM_CELL = 6;
 const WM_COLS = 5;
 const WM_ROWS = 9;
+const WM_GAP = 7;
 
 const WM_GLYPHS: Record<string, { top: number; rows: string[] }> = {
   o: { top: 2, rows: ["11111", "10001", "10001", "10001", "11111"] },
@@ -123,43 +125,58 @@ const WM_GLYPHS: Record<string, { top: number; rows: string[] }> = {
   d: { top: 0, rows: ["00001", "00001", "11111", "10001", "10001", "10001", "11111"] },
 };
 
+/** Runs of set cells in a row, as [start, length] — one rect each. */
+function wmRuns(bits: string): Array<[number, number]> {
+  const runs: Array<[number, number]> = [];
+  let i = 0;
+  while (i < bits.length) {
+    if (bits[i] !== "1") {
+      i++;
+      continue;
+    }
+    const from = i;
+    while (i < bits.length && bits[i] === "1") i++;
+    runs.push([from, i - from]);
+  }
+  return runs;
+}
+
 /**
- * The wordmark, drawn a cell at a time.
+ * The wordmark, drawn as one SVG.
  *
- * Laid out row by row rather than as one wrapping grid: a wrapping grid has to
- * fit exactly five cells per line, and once dp rounds to whole pixels the fifth
- * cell can spill onto the next line — which punched holes through the letters.
- * Explicit rows cannot wrap, so they cannot break.
+ * It used to be a View per cell. Adjacent views do not meet exactly once their
+ * edges land between physical pixels, and the seams showed as gaps running
+ * through the letters. Drawing into a single canvas removes the seams, and
+ * merging each row's neighbouring cells into one rect means most letters are a
+ * handful of solid bars rather than a grid of squares.
  */
 export function Wordmark({ theme }: { theme: Theme }) {
+  const word = "opencode";
+  const glyphW = WM_COLS * WM_CELL;
+  const width = word.length * glyphW + (word.length - 1) * WM_GAP;
+  const height = WM_ROWS * WM_CELL;
+
   return (
-    <View style={{ flexDirection: "row", gap: 7 }}>
-      {"opencode".split("").map((ch, wi) => {
+    <Svg width={width} height={height} viewBox={`0 0 ${width} ${height}`}>
+      {word.split("").map((ch, wi) => {
         const def = WM_GLYPHS[ch];
-        return (
-          <View key={wi}>
-            {Array.from({ length: WM_ROWS }).map((_, r) => {
-              const src = r - def.top;
-              const bits = src >= 0 && src < def.rows.length ? def.rows[src] : null;
-              return (
-                <View key={r} style={{ flexDirection: "row" }}>
-                  {Array.from({ length: WM_COLS }).map((__, c) => (
-                    <View
-                      key={c}
-                      style={{
-                        width: WM_CELL,
-                        height: WM_CELL,
-                        backgroundColor: bits && bits[c] === "1" ? theme.wm : "transparent",
-                      }}
-                    />
-                  ))}
-                </View>
-              );
-            })}
-          </View>
-        );
+        const originX = wi * (glyphW + WM_GAP);
+        return Array.from({ length: WM_ROWS }).flatMap((_, r) => {
+          const src = r - def.top;
+          if (src < 0 || src >= def.rows.length) return [];
+          return wmRuns(def.rows[src]).map(([from, len], k) => (
+            <Rect
+              key={`${wi}-${r}-${k}`}
+              x={originX + from * WM_CELL}
+              y={r * WM_CELL}
+              width={len * WM_CELL}
+              height={WM_CELL}
+              fill={theme.wm}
+            />
+          ));
+        });
       })}
-    </View>
+    </Svg>
   );
 }
 
