@@ -7,7 +7,7 @@ import { Theme } from "./theme";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 // TODO: Замените на ваш репозиторий (например: "owner/opencode-mobile")
-const GITHUB_REPO = "USERNAME/REPO";
+const GITHUB_REPO = "EshiStudio/OpenCode-Mobile";
 
 export function UpdateOverlay({ theme }: { theme: Theme }) {
   const [updateInfo, setUpdateInfo] = useState<{ version: string; apkUrl: string | null; releaseUrl: string } | null>(null);
@@ -17,8 +17,6 @@ export function UpdateOverlay({ theme }: { theme: Theme }) {
 
   useEffect(() => {
     async function check() {
-      if (GITHUB_REPO === "USERNAME/REPO") return; // Заглушка, чтобы не стучаться на несуществующий репо
-
       try {
         const res = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/releases/latest`);
         if (!res.ok) return;
