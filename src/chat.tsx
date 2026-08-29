@@ -99,7 +99,16 @@ export function ChatScreen({
           sessionID: store.activeId as string,
           time: { created: store.local.sessions.find((s) => s.id === store.activeId)?.when || Date.now() },
         },
-        parts: [{ id: `locp-${i}`, type: "text", text: m.content }],
+        parts: [
+          { id: `locp-${i}`, type: "text", text: m.content },
+          ...(m.files || []).map((f, j) => ({
+            id: `locf-${i}-${j}`,
+            type: "file" as const,
+            mime: f.mime || (f.kind === "image" ? "image/*" : "application/octet-stream"),
+            filename: f.name,
+            url: f.uri,
+          })),
+        ],
       }))
     : (store.activeId ? store.messages[store.activeId] || [] : []);
   const active = pool.find((s) => s.id === store.activeId) || null;

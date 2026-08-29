@@ -359,7 +359,24 @@ export async function saveProviderModels(m: Record<string, string[]>): Promise<v
 
 const K_LOCAL = "ocm.local";
 
-export type LocalSessionMsg = { role: "user" | "assistant"; content: string };
+/**
+ * An attachment kept with the message it was sent in. The picker's copy lives
+ * in the cache, which the OS is free to clear, so anything that has to survive
+ * in the history is copied into documents first.
+ */
+export type LocalAttachment = {
+  kind: "image" | "file";
+  name: string;
+  /** file:// location of our own copy. */
+  uri: string;
+  mime?: string;
+};
+
+export type LocalSessionMsg = {
+  role: "user" | "assistant";
+  content: string;
+  files?: LocalAttachment[];
+};
 
 /**
  * A workspace: a real folder, on the device or in a connected cloud, that a

@@ -1,12 +1,60 @@
 import React, { useState } from "react";
 import * as Clipboard from "expo-clipboard";
 import { t } from "./i18n";
-import { Animated, Pressable, StyleSheet, Text, View } from "react-native";
+import { Animated, Image, Pressable, StyleSheet, Text, View } from "react-native";
 import { Icon, IconName } from "./icons";
 import { mono } from "./ui";
 import { Theme } from "./theme";
 import { Part, StoredMessage } from "./types";
 import { Markdown } from "./markdown";
+
+/**
+ * An attachment as sent. Images show themselves — a filename tells you nothing
+ * about the picture you just sent — and everything else keeps the file row.
+ */
+function Attachment({ theme, part }: { theme: Theme; part: Extract<Part, { type: "file" }> }) {
+  const [broken, setBroken] = useState(false);
+  const isImage = /^image\//.test(part.mime || "") && !!part.url;
+
+  if (isImage && !broken) {
+    return (
+      <Image
+        source={{ uri: part.url }}
+        style={[s.thumb, { backgroundColor: theme.l1 }]}
+        resizeMode="cover"
+        onError={() => setBroken(true)}
+        accessibilityLabel={part.filename}
+      />
+    );
+  }
+
+  return (
+    <View style={s.attRow}>
+      <Icon name={isImage ? "photo" : "open-file"} size={14} color={theme.muted} />
+      <Text style={[mono, { fontSize: 11.5, color: theme.muted, flex: 1 }]} numberOfLines={1}>
+        {part.filename || part.url}
+      </Text>
+    </View>
+  );
+}
+
+/**
+ * Sending an attachment also writes an icon-and-name line into the text so the
+ * model knows what came with it. Once the attachment itself is drawn, that line
+ * is noise, so it is dropped from what the bubble shows.
+ */
+function stripAttachLine(text: string, files: Array<Extract<Part, { type: "file" }>>): string {
+  if (!files.length) return text;
+  const names = new Set(files.map((f) => f.filename));
+  return text
+    .split("\n")
+    .filter((line) => {
+      const m = line.match(/^[\u{1F5BC}\u{1F4CE}]️?\s*(.+)$/u);
+      return !(m && names.has(m[1]));
+    })
+    .join("\n")
+    .trim();
+}
 
 /**
  * The three things opencode offers on a message: put the prompt back in the
@@ -163,8 +211,9 @@ export function MessageView({
   const isUser = msg.info.role === "user";
   if (isUser) {
     const text = msg.parts.find((p) => p.type === "text");
-    const file = msg.parts.find((p) => p.type === "file");
-    const body = text && text.type === "text" ? text.text : "";
+    const files = msg.parts.filter((p): p is Extract<Part, { type: "file" }> => p.type === "file");
+    // The attachment line in the body repeats what the thumbnails already say.
+    const body = stripAttachLine(text && text.type === "text" ? text.text : "", files);
     return (
       <View style={{ marginVertical: 10, alignItems: "flex-end" }}>
         <Pressable
@@ -175,14 +224,9 @@ export function MessageView({
             { backgroundColor: theme.l2 },
           ]}
         >
-          {file && (
-            <View style={s.attRow}>
-              <Icon name="open-file" size={14} color={theme.muted} />
-              <Text style={[mono, { fontSize: 11.5, color: theme.muted, flex: 1 }]} numberOfLines={1}>
-                {file.filename || file.url}
-              </Text>
-            </View>
-          )}
+          {files.map((f) => (
+            <Attachment key={f.id} theme={theme} part={f} />
+          ))}
           {body ? <Text style={{ fontSize: 14, color: theme.ink, lineHeight: 21 }}>{body}</Text> : null}
         </Pressable>
         {actions ? (
@@ -270,6 +314,7 @@ export function PendingShim({ theme }: { theme: Theme }) {
 }
 
 const s = StyleSheet.create({
+  thumb: { width: 190, height: 190, borderRadius: 9, marginBottom: 6 },
   actions: {
     flexDirection: "row",
     alignItems: "center",

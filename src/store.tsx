@@ -27,6 +27,7 @@ import {
   loadSettings,
   loadYandexToken,
   LocalSessionMsg,
+  LocalAttachment,
   LocalState,
   ProviderPreset,
   deleteKey,
@@ -50,6 +51,7 @@ import { t } from "./i18n";
 import { extractToken } from "./yandex";
 import { CloudId, CLOUD_IDS, cloudName, connect as cloudConnect, makeFolder as cloudMakeFolder } from "./clouds";
 import { Directory, Paths } from "expo-file-system";
+import { keepForHistory } from "./media";
 import { OAuthCloud, refresh as oauthRefresh, signIn, stale } from "./oauth";
 import { APP_VERSION_LABEL, checkForUpdate, Release } from "./update";
 import { presetName } from "./local-ai";
@@ -758,6 +760,19 @@ export function StoreProvider({
         { role: "user", content: userContent },
       ];
 
+      // Keep the attachments themselves, not just their names: the history has
+      // to show the picture that was sent, not a line of text describing it.
+      const kept: LocalAttachment[] = [];
+      for (const f of files) {
+        if (!f.uri) continue;
+        kept.push({
+          kind: f.kind === "image" ? "image" : "file",
+          name: f.name,
+          uri: await keepForHistory(f.uri, f.name),
+          mime: f.mime,
+        });
+      }
+
       // Append through an updater: `send` may have just added this session, and a
       // snapshot taken before that would wipe it back out.
       setState((s) => {
@@ -767,7 +782,11 @@ export function StoreProvider({
             ...s.local.messages,
             [sid]: [
               ...(s.local.messages[sid] || []),
-              { role: "user", content: files.length ? attachLine(files) + "\n" + text : text },
+              {
+                role: "user",
+                content: files.length ? attachLine(files) + "\n" + text : text,
+                files: kept.length ? kept : undefined,
+              },
             ],
           },
         };

@@ -79,6 +79,24 @@ export async function keepLocally(p: Picked): Promise<Picked> {
   return { ...p, uri: dest.uri };
 }
 
+/**
+ * Copies a file somewhere it will still be there later. `keepLocally` uses the
+ * cache, which is fine for a pending attachment but not for one that has to
+ * keep showing in the chat history — the OS clears the cache whenever it likes.
+ */
+export async function keepForHistory(uri: string, name: string): Promise<string> {
+  try {
+    const box = new Directory(Paths.document, "attachments");
+    if (!box.exists) box.create({ intermediates: true });
+    const dest = new File(box, `${Date.now()}-${sanitize(name)}`);
+    await new File(uri).copy(dest, { overwrite: true } as never);
+    return dest.uri;
+  } catch {
+    // Better a link to the cache copy than nothing at all.
+    return uri;
+  }
+}
+
 function sanitize(name: string): string {
   return name.replace(/[^\w.\-]+/g, "_").slice(0, 60) || "file";
 }
