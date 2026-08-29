@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Animated, Keyboard, KeyboardEvent, Platform } from "react-native";
 
 /**
@@ -40,4 +40,27 @@ export function useKeyboardOffset(): Animated.Value {
   }, [offset]);
 
   return offset;
+}
+
+/**
+ * Whether the keyboard is on screen. Separate from the offset above because
+ * layout that only makes sense at rest — the project and branch row under the
+ * composer — should get out of the way while typing, and a plain boolean is
+ * what a conditional render needs.
+ */
+export function useKeyboardVisible(): boolean {
+  const [visible, setVisible] = useState(false);
+
+  useEffect(() => {
+    const showEvent = Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
+    const hideEvent = Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
+    const show = Keyboard.addListener(showEvent, () => setVisible(true));
+    const hide = Keyboard.addListener(hideEvent, () => setVisible(false));
+    return () => {
+      show.remove();
+      hide.remove();
+    };
+  }, []);
+
+  return visible;
 }

@@ -11,7 +11,7 @@ import {
   View,
 } from "react-native";
 import { BrandIcon, Icon } from "./icons";
-import { useKeyboardOffset } from "./keyboard";
+import { useKeyboardOffset, useKeyboardVisible } from "./keyboard";
 import { Attachment } from "./store";
 import { humanSize } from "./media";
 import { Theme } from "./theme";
@@ -68,6 +68,8 @@ export function Composer({
 }) {
   const inputRef = useRef<TextInput>(null);
   const kbOffset = useKeyboardOffset();
+  // The project and branch row is context, not something you need mid-sentence.
+  const typing = useKeyboardVisible();
   const send = usePressScale(0.88);
 
   return (
@@ -153,6 +155,7 @@ export function Composer({
           </View>
         </View>
 
+        {typing ? null : (
         <View style={s.footWrap}>
           <Pressable
             onPress={onPickProject}
@@ -176,6 +179,7 @@ export function Composer({
             </Pressable>
           ) : null}
         </View>
+        )}
       </View>
     </Animated.View>
   );
