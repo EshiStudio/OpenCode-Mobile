@@ -38,7 +38,14 @@ yarn-error.*
 
 # generated native folders
 /ios
-/android
+
+# native Android project: the sources are tracked, the build output is not
+/android/build/
+/android/app/build/
+/android/.gradle/
+/android/.cxx/
+/android/app/.cxx/
+/android/local.properties
 
 # agent tooling and local working files — not part of the app
 .claude/
