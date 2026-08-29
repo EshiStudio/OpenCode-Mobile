@@ -1,30 +1,31 @@
 import * as Dropbox from "./dropbox";
+import { t } from "./i18n";
 import * as Drive from "./gdrive";
 import * as Yandex from "./yandex";
 
 /** Cloud storages the app can attach to. */
 export type CloudId = "yandex" | "gdrive" | "dropbox";
 
-export const CLOUDS: Array<{ id: CloudId; name: string; hint: string }> = [
-  {
-    id: "yandex",
-    name: "Яндекс Диск",
-    hint: "OAuth-токен с правами cloud_api:disk. Токен живёт год.",
-  },
-  {
-    id: "gdrive",
-    name: "Google Drive",
-    hint: "Access token с областью drive.file. Живёт около часа.",
-  },
-  {
-    id: "dropbox",
-    name: "Dropbox",
-    hint: "Access token из App Console. Живёт около четырёх часов.",
-  },
-];
+export const CLOUD_IDS: CloudId[] = ["yandex", "gdrive", "dropbox"];
 
+/**
+ * Names and hints are resolved on call, not at import: the language is loaded
+ * from storage after the modules are evaluated, so a frozen list would stay
+ * in whatever language happened to be the default.
+ */
 export function cloudName(id: CloudId): string {
-  return CLOUDS.find((c) => c.id === id)?.name || id;
+  if (id === "yandex") return t("cloud.yandex");
+  if (id === "gdrive") return "Google Drive";
+  if (id === "dropbox") return "Dropbox";
+  return id;
+}
+
+export function cloudHint(id: CloudId): string {
+  return t("cloud." + id + ".hint");
+}
+
+export function clouds(): Array<{ id: CloudId; name: string; hint: string }> {
+  return CLOUD_IDS.map((id) => ({ id, name: cloudName(id), hint: cloudHint(id) }));
 }
 
 /** Connects, creating the shared workspace folder. Returns the root it settled on. */

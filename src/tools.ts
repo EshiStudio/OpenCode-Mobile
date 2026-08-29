@@ -2,11 +2,12 @@ import { Directory, File, Paths } from "expo-file-system";
 import { fetch as expoFetch } from "expo/fetch";
 import { AppControl, isAppTool, runAppTool } from "./app-tools";
 import * as Clouds from "./clouds";
+import { t } from "./i18n";
 import { exportToDevice } from "./media";
 import { CloudId } from "./clouds";
 
 /**
- * File tools the model can call when "локальная работа" is on.
+ * File tools the model can call when local work is on.
  *
  * Everything lives under a single workspace folder inside the app's own storage.
  * Android sandboxes apps, so this is the whole filesystem the app may touch
@@ -35,14 +36,14 @@ function safeSegments(rel: string): string[] {
     .split("/")
     .map((p) => p.trim())
     .filter((p) => p && p !== ".");
-  if (parts.some((p) => p === "..")) throw new Error("путь не должен содержать ..");
-  if (/^[a-zA-Z]:/.test(rel) || rel.startsWith("/")) throw new Error("путь должен быть относительным");
+  if (parts.some((p) => p === "..")) throw new Error(t("tool.err.dotdot"));
+  if (/^[a-zA-Z]:/.test(rel) || rel.startsWith("/")) throw new Error(t("tool.err.relative"));
   return parts;
 }
 
 function fileAt(rel: string): File {
   const parts = safeSegments(rel);
-  if (!parts.length) throw new Error("не указано имя файла");
+  if (!parts.length) throw new Error(t("tool.err.noName"));
   return new File(ensureRoot(), ...parts);
 }
 
@@ -58,15 +59,17 @@ export type ToolSpec = {
 
 const strProp = (description: string) => ({ type: "string", description });
 
-export const FILE_TOOLS: ToolSpec[] = [
+/** Rebuilt per call so the descriptions follow the interface language. */
+export function fileTools(): ToolSpec[] {
+  return [
   {
     type: "function",
     function: {
       name: "list_dir",
-      description: "Показать содержимое папки в рабочей директории на устройстве.",
+      description: t("tool.listDir.desc"),
       parameters: {
         type: "object",
-        properties: { path: strProp("Относительный путь папки. Пустая строка — корень.") },
+        properties: { path: strProp(t("tool.listDir.path")) },
         required: [],
       },
     },
@@ -75,10 +78,10 @@ export const FILE_TOOLS: ToolSpec[] = [
     type: "function",
     function: {
       name: "make_dir",
-      description: "Создать папку (вместе с промежуточными) в рабочей директории.",
+      description: t("tool.makeDir.desc"),
       parameters: {
         type: "object",
-        properties: { path: strProp("Относительный путь новой папки, например notes/2026") },
+        properties: { path: strProp(t("tool.makeDir.path")) },
         required: ["path"],
       },
     },
@@ -87,12 +90,12 @@ export const FILE_TOOLS: ToolSpec[] = [
     type: "function",
     function: {
       name: "write_file",
-      description: "Создать или перезаписать текстовый файл в рабочей директории.",
+      description: t("tool.writeFile.desc"),
       parameters: {
         type: "object",
         properties: {
-          path: strProp("Относительный путь файла, например notes/todo.md"),
-          content: strProp("Полное содержимое файла"),
+          path: strProp(t("tool.writeFile.path")),
+          content: strProp(t("tool.writeFile.content")),
         },
         required: ["path", "content"],
       },
@@ -102,10 +105,10 @@ export const FILE_TOOLS: ToolSpec[] = [
     type: "function",
     function: {
       name: "read_file",
-      description: "Прочитать текстовый файл из рабочей директории.",
+      description: t("tool.readFile.desc"),
       parameters: {
         type: "object",
-        properties: { path: strProp("Относительный путь файла") },
+        properties: { path: strProp(t("tool.readFile.path")) },
         required: ["path"],
       },
     },
@@ -114,56 +117,60 @@ export const FILE_TOOLS: ToolSpec[] = [
     type: "function",
     function: {
       name: "delete_path",
-      description: "Удалить файл или папку в рабочей директории.",
+      description: t("tool.deletePath.desc"),
       parameters: {
         type: "object",
-        properties: { path: strProp("Относительный путь файла или папки") },
+        properties: { path: strProp(t("tool.deletePath.path")) },
         required: ["path"],
       },
     },
   },
-];
+  ];
+}
 
 /** Human-readable one-liner for the chat transcript. */
 export function toolLabel(name: string, args: Record<string, unknown>): string {
   const path = typeof args.path === "string" && args.path ? args.path : "/";
   switch (name) {
     case "list_dir":
-      return `список файлов: ${path}`;
+      return t("tool.label.listDir", { path });
     case "make_dir":
-      return `создана папка: ${path}`;
+      return t("tool.label.makeDir", { path });
     case "write_file":
-      return `записан файл: ${path}`;
+      return t("tool.label.writeFile", { path });
     case "read_file":
-      return `прочитан файл: ${path}`;
+      return t("tool.label.readFile", { path });
     case "delete_path":
-      return `удалено: ${path}`;
+      return t("tool.label.delete", { path });
     case "app_status":
-      return "проверка настроек приложения";
+      return t("tool.label.appStatus");
     case "app_connect_cloud":
-      return "подключение хранилища: " + (typeof args.cloud === "string" ? args.cloud : "");
+      return t("tool.label.connectCloud", { name: typeof args.cloud === "string" ? args.cloud : "" });
     case "app_set_provider_key":
-      return "сохранён ключ провайдера: " + (typeof args.provider === "string" ? args.provider : "");
+      return t("tool.label.providerKey", { name: typeof args.provider === "string" ? args.provider : "" });
     case "app_set_setting":
-      return "настройка " + (typeof args.name === "string" ? args.name : "") + ": " + (args.value === true ? "вкл" : "выкл");
+      return t("tool.label.setting", {
+        name: typeof args.name === "string" ? args.name : "",
+        value: args.value === true ? t("common.on") : t("common.off"),
+      });
     case "app_use_model":
-      return "выбрана модель: " + (typeof args.model === "string" ? args.model : "");
+      return t("tool.label.useModel", { name: typeof args.model === "string" ? args.model : "" });
     case "web_search":
-      return "поиск: " + (typeof args.query === "string" ? args.query : "");
+      return t("tool.label.search", { query: typeof args.query === "string" ? args.query : "" });
     case "fetch_url":
-      return "загружена страница: " + (typeof args.url === "string" ? args.url : "");
+      return t("tool.label.fetch", { url: typeof args.url === "string" ? args.url : "" });
     case "disk_list":
-      return "Диск, список: " + path;
+      return t("tool.label.diskList", { path });
     case "disk_make_dir":
-      return "Диск, создана папка: " + path;
+      return t("tool.label.diskMakeDir", { path });
     case "disk_write_file":
-      return "Диск, записан файл: " + path;
+      return t("tool.label.diskWrite", { path });
     case "disk_read_file":
-      return "Диск, прочитан файл: " + path;
+      return t("tool.label.diskRead", { path });
     case "download_url":
-      return "Скачано: " + (typeof args.url === "string" ? args.url : path);
+      return t("tool.label.download", { url: typeof args.url === "string" ? args.url : path });
     case "save_to_device":
-      return "Сохранено на устройство: " + path;
+      return t("tool.label.saveToDevice", { path });
     default:
       return name;
   }
@@ -172,15 +179,16 @@ export function toolLabel(name: string, args: Record<string, unknown>): string {
 
 /* ---------------------------------------------------------------- web ---- */
 
-export const WEB_TOOLS: ToolSpec[] = [
+export function webTools(): ToolSpec[] {
+  return [
   {
     type: "function",
     function: {
       name: "web_search",
-      description: "Поиск в интернете. Возвращает заголовки, ссылки и краткие описания.",
+      description: t("tool.search.desc"),
       parameters: {
         type: "object",
-        properties: { query: strProp("Поисковый запрос") },
+        properties: { query: strProp(t("tool.search.query")) },
         required: ["query"],
       },
     },
@@ -189,15 +197,16 @@ export const WEB_TOOLS: ToolSpec[] = [
     type: "function",
     function: {
       name: "fetch_url",
-      description: "Загрузить страницу по URL и вернуть её текст.",
+      description: t("tool.fetch.desc"),
       parameters: {
         type: "object",
-        properties: { url: strProp("Полный адрес, начиная с http:// или https://") },
+        properties: { url: strProp(t("tool.fetch.url")) },
         required: ["url"],
       },
     },
   },
-];
+  ];
+}
 
 const UA =
   "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126 Mobile Safari/537.36";
@@ -219,15 +228,15 @@ function stripHtml(html: string): string {
 }
 
 async function webSearch(query: string): Promise<string> {
-  if (!query.trim()) return "Пустой запрос";
+  if (!query.trim()) return t("tool.out.emptyQuery");
   const url = "https://duckduckgo.com/html/?q=" + encodeURIComponent(query);
   let res: Response;
   try {
     res = await expoFetch(url, { headers: { "User-Agent": UA, Accept: "text/html" } });
   } catch {
-    return "Ошибка: нет доступа к сети";
+    return t("tool.err.noNetwork");
   }
-  if (!res.ok) return "Поиск вернул ошибку " + res.status;
+  if (!res.ok) return t("tool.out.searchFailed", { status: res.status });
   const html = await res.text();
   const out: string[] = [];
   const re = /<a[^>]+class="[^"]*result__a[^"]*"[^>]+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi;
@@ -239,21 +248,21 @@ async function webSearch(query: string): Promise<string> {
     const title = stripHtml(m[2]);
     if (title) out.push(out.length + 1 + ". " + title + "\n   " + href);
   }
-  return out.length ? out.join("\n") : "Ничего не найдено";
+  return out.length ? out.join("\n") : t("common.nothingFound");
 }
 
 async function fetchUrl(url: string): Promise<string> {
-  if (!/^https?:\/\//i.test(url)) return "Ошибка: адрес должен начинаться с http:// или https://";
+  if (!/^https?:\/\//i.test(url)) return t("tool.err.needHttp");
   let res: Response;
   try {
     res = await expoFetch(url, { headers: { "User-Agent": UA } });
   } catch {
-    return "Ошибка: не удалось загрузить страницу";
+    return t("tool.err.pageFailed");
   }
-  if (!res.ok) return "Страница ответила " + res.status;
+  if (!res.ok) return t("tool.out.pageStatus", { status: res.status });
   const body = await res.text();
   const text = /<html|<body/i.test(body) ? stripHtml(body) : body;
-  return text.length > 12000 ? text.slice(0, 12000) + "\n…обрезано" : text;
+  return text.length > 12000 ? text.slice(0, 12000) + "\n" + t("common.truncated") : text;
 }
 
 /* ----------------------------------------------------------- download ---- */
@@ -263,18 +272,19 @@ async function fetchUrl(url: string): Promise<string> {
  * Downloads, so `save_to_device` opens the system folder picker and copies into
  * whatever the user chooses.
  */
-export const DOWNLOAD_TOOLS: ToolSpec[] = [
+export function downloadTools(): ToolSpec[] {
+  return [
   {
     type: "function",
     function: {
       name: "download_url",
       description:
-        "Скачать файл по ссылке в рабочую папку приложения. Возвращает относительный путь, который потом можно передать в save_to_device.",
+        t("tool.download.desc"),
       parameters: {
         type: "object",
         properties: {
-          url: strProp("Прямая ссылка на файл, начиная с http:// или https://"),
-          path: strProp("Куда сохранить внутри рабочей папки, например downloads/report.pdf"),
+          url: strProp(t("tool.download.url")),
+          path: strProp(t("tool.download.path")),
         },
         required: ["url"],
       },
@@ -285,46 +295,48 @@ export const DOWNLOAD_TOOLS: ToolSpec[] = [
     function: {
       name: "save_to_device",
       description:
-        "Сохранить файл из рабочей папки в память устройства. Пользователь сам выберет папку (например Загрузки) в системном окне.",
+        t("tool.saveToDevice.desc"),
       parameters: {
         type: "object",
         properties: {
-          path: strProp("Относительный путь файла в рабочей папке"),
-          name: strProp("Имя, под которым сохранить (необязательно)"),
+          path: strProp(t("tool.saveToDevice.path")),
+          name: strProp(t("tool.saveToDevice.name")),
         },
         required: ["path"],
       },
     },
   },
-];
+  ];
+}
 
 /* --------------------------------------------------------------- disk ---- */
 
-export const DISK_TOOLS: ToolSpec[] = [
+export function diskTools(): ToolSpec[] {
+  return [
   {
     type: "function",
     function: {
       name: "disk_list",
-      description: "Показать содержимое папки в рабочей папке на Яндекс Диске.",
-      parameters: { type: "object", properties: { path: strProp("Относительный путь, пусто — корень"), cloud: strProp("yandex, gdrive или dropbox") }, required: [] },
+      description: t("tool.diskList.desc"),
+      parameters: { type: "object", properties: { path: strProp(t("tool.diskList.path")), cloud: strProp(t("tool.diskList.cloud")) }, required: [] },
     },
   },
   {
     type: "function",
     function: {
       name: "disk_make_dir",
-      description: "Создать папку на Яндекс Диске внутри рабочей папки.",
-      parameters: { type: "object", properties: { path: strProp("Относительный путь папки") }, required: ["path"] },
+      description: t("tool.diskMakeDir.desc"),
+      parameters: { type: "object", properties: { path: strProp(t("tool.diskMakeDir.path")) }, required: ["path"] },
     },
   },
   {
     type: "function",
     function: {
       name: "disk_write_file",
-      description: "Сохранить текстовый файл на Яндекс Диск в рабочую папку.",
+      description: t("tool.diskWrite.desc"),
       parameters: {
         type: "object",
-        properties: { path: strProp("Относительный путь файла"), content: strProp("Содержимое файла") },
+        properties: { path: strProp(t("tool.readFile.path")), content: strProp(t("tool.diskWrite.content")) },
         required: ["path", "content"],
       },
     },
@@ -333,11 +345,12 @@ export const DISK_TOOLS: ToolSpec[] = [
     type: "function",
     function: {
       name: "disk_read_file",
-      description: "Прочитать текстовый файл с Яндекс Диска из рабочей папки.",
-      parameters: { type: "object", properties: { path: strProp("Относительный путь файла") }, required: ["path"] },
+      description: t("tool.diskRead.desc"),
+      parameters: { type: "object", properties: { path: strProp(t("tool.readFile.path")) }, required: ["path"] },
     },
   },
-];
+  ];
+}
 
 export type ToolContext = {
   yandexToken?: string;
@@ -356,7 +369,7 @@ export async function runTool(name: string, rawArgs: string, ctx: ToolContext = 
   try {
     args = rawArgs ? (JSON.parse(rawArgs) as Record<string, unknown>) : {};
   } catch {
-    return "Ошибка: аргументы не разобрались как JSON";
+    return t("tool.err.badJson");
   }
   const path = typeof args.path === "string" ? args.path : "";
   if (isAppTool(name)) return await runAppTool(name, args, ctx.app);
@@ -365,9 +378,9 @@ export async function runTool(name: string, rawArgs: string, ctx: ToolContext = 
     switch (name) {
       case "list_dir": {
         const dir = dirAt(path);
-        if (!dir.exists) return `Папки нет: ${path || "/"}`;
+        if (!dir.exists) return t("tool.out.noFolder", { path: path || "/" });
         const items = dir.list();
-        if (!items.length) return `Пусто: ${path || "/"}`;
+        if (!items.length) return t("tool.out.empty", { path: path || "/" });
         return items
           .map((it) => {
             const isDir = it instanceof Directory;
@@ -378,50 +391,52 @@ export async function runTool(name: string, rawArgs: string, ctx: ToolContext = 
       }
       case "download_url": {
         const url = typeof args.url === "string" ? args.url : "";
-        if (!/^https?:\/\//.test(url)) return "Ошибка: нужна ссылка http:// или https://";
+        if (!/^https?:\/\//.test(url)) return t("tool.err.needLink");
         const rel = path || "downloads/" + (decodeURIComponent(url.split("?")[0].split("/").pop() || "file") || "file");
         const dest = fileAt(rel);
         const dir = dest.parentDirectory;
         if (!dir.exists) dir.create({ intermediates: true });
         await File.downloadFileAsync(url, dest, { idempotent: true } as never);
-        return `Скачано в ${rel} (${dest.size} байт)`;
+        return t("tool.out.downloaded", { path: rel, n: dest.size });
       }
       case "save_to_device": {
         const file = fileAt(path);
-        if (!file.exists) return `Файла нет: ${path}`;
+        if (!file.exists) return t("tool.out.noFile", { path });
         const name = typeof args.name === "string" && args.name ? args.name : undefined;
         const res = await exportToDevice(file, name);
-        return res.saved ? `Сохранено на устройство: ${name || file.name}` : `Не сохранено: ${res.reason}`;
+        return res.saved
+          ? t("tool.out.savedToDevice", { name: name || file.name })
+          : t("tool.out.notSaved", { reason: String(res.reason) });
       }
       case "make_dir": {
         const dir = dirAt(path);
-        if (dir.exists) return `Уже существует: ${path}`;
+        if (dir.exists) return t("tool.out.exists", { path });
         dir.create({ intermediates: true });
-        return `Папка создана: ${path}`;
+        return t("tool.out.folderCreated", { path });
       }
       case "write_file": {
         const content = typeof args.content === "string" ? args.content : "";
         const file = fileAt(path);
         if (!file.exists) file.create({ intermediates: true, overwrite: true });
         file.write(content);
-        return `Файл записан: ${path} (${content.length} символов)`;
+        return t("tool.out.fileWritten", { path, n: content.length });
       }
       case "read_file": {
         const file = fileAt(path);
-        if (!file.exists) return `Файла нет: ${path}`;
+        if (!file.exists) return t("tool.out.noFile", { path });
         const text = await file.text();
-        return text.length > 8000 ? text.slice(0, 8000) + "\n…обрезано" : text;
+        return text.length > 8000 ? text.slice(0, 8000) + "\n" + t("common.truncated") : text;
       }
       case "delete_path": {
         const dir = dirAt(path);
         if (dir.exists) {
           dir.delete();
-          return `Папка удалена: ${path}`;
+          return t("tool.out.folderDeleted", { path });
         }
         const file = fileAt(path);
-        if (!file.exists) return `Ничего нет по пути: ${path}`;
+        if (!file.exists) return t("tool.out.nothingAt", { path });
         file.delete();
-        return `Файл удалён: ${path}`;
+        return t("tool.out.fileDeleted", { path });
       }
       case "web_search":
         return await webSearch(typeof args.query === "string" ? args.query : "");
@@ -436,24 +451,24 @@ export async function runTool(name: string, rawArgs: string, ctx: ToolContext = 
         const asked = typeof args.cloud === "string" ? (args.cloud as CloudId) : undefined;
         const preferred = ctx.preferredCloud && tokens[ctx.preferredCloud] ? (ctx.preferredCloud as CloudId) : undefined;
         const cloud = (asked && tokens[asked] ? asked : preferred || (Object.keys(tokens)[0] as CloudId)) || undefined;
-        if (!cloud) return "Ни одно облако не подключено. Подключите его в Настройках → Серверы.";
+        if (!cloud) return t("tool.out.noCloud");
         const token = tokens[cloud];
         const root = (ctx.cloudRoots || {})[cloud];
-        if (name === "disk_list") return (await Clouds.listFolder(cloud, token, path, root)).join("\n") || "Пусто";
+        if (name === "disk_list") return (await Clouds.listFolder(cloud, token, path, root)).join("\n") || t("tool.out.emptyShort");
         if (name === "disk_make_dir") {
           await Clouds.makeFolder(cloud, token, path, root);
-          return "Папка создана в " + Clouds.cloudName(cloud) + ": " + path;
+          return t("tool.out.cloudFolder", { cloud: Clouds.cloudName(cloud), path });
         }
         if (name === "disk_read_file") return await Clouds.downloadText(cloud, token, path, root);
         const content = typeof args.content === "string" ? args.content : "";
         await Clouds.uploadText(cloud, token, path, content, root);
-        return "Файл сохранён в " + Clouds.cloudName(cloud) + ": " + path;
+        return t("tool.out.cloudFile", { cloud: Clouds.cloudName(cloud), path });
       }
 
       default:
-        return `Неизвестный инструмент: ${name}`;
+        return t("tool.err.unknown", { name });
     }
   } catch (e) {
-    return "Ошибка: " + (e instanceof Error ? e.message : String(e));
+    return t("tool.err.generic", { detail: e instanceof Error ? e.message : String(e) });
   }
 }

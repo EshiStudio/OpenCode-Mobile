@@ -1,4 +1,5 @@
 import React from "react";
+import { t } from "./i18n";
 import { Animated, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { Icon } from "./icons";
 import { Theme } from "./theme";
@@ -34,11 +35,11 @@ export function Drawer({
     Animated.timing(tx, { toValue: open ? 0 : -340, duration: 200, useNativeDriver: true }).start();
   }, [open, tx]);
 
-  const now = "сейчас";
+  const now = t("common.now");
   const groups = [
-    { label: "Сегодня", items: store.sessions.filter((s) => !isBusy(store.statuses[s.id]) && isToday(s)) },
-    { label: "Ранее", items: store.sessions.filter((s) => !isBusy(store.statuses[s.id]) && !isToday(s)) },
-    { label: "Активны", items: store.sessions.filter((s) => isBusy(store.statuses[s.id])) },
+    { label: t("common.today"), items: store.sessions.filter((s) => !isBusy(store.statuses[s.id]) && isToday(s)) },
+    { label: t("common.earlier"), items: store.sessions.filter((s) => !isBusy(store.statuses[s.id]) && !isToday(s)) },
+    { label: t("common.active"), items: store.sessions.filter((s) => isBusy(store.statuses[s.id])) },
   ];
 
   return (
@@ -64,7 +65,7 @@ export function Drawer({
 
         <Pressable onPress={onNew} style={({ pressed }) => [s.newBtn, { borderColor: theme.bd, backgroundColor: pressed ? theme.l2 : "transparent" }]}>
           <Icon name="new-session" size={16} color={theme.muted} />
-          <Text style={s.newTxt}>Новая сессия</Text>
+          <Text style={s.newTxt}>{t("chat.newSession")}</Text>
         </Pressable>
 
         <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 10, paddingBottom: 12 }}>
@@ -93,14 +94,14 @@ export function Drawer({
                       >
                         <View style={{ flex: 1, minWidth: 0 }}>
                           <Text style={[s.chatT, { color: theme.ink }]} numberOfLines={1}>
-                            {ses.title || "Новая сессия"}
+                            {ses.title || t("chat.newSession")}
                           </Text>
                           <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 3 }}>
                             <Text style={{ fontSize: 11, color: theme.faint }} numberOfLines={1}>
                               {projectOf(ses)}
                             </Text>
                             {busy ? (
-                              <Text style={{ fontSize: 11, color: theme.warn }}>· работает</Text>
+                              <Text style={{ fontSize: 11, color: theme.warn }}>· {t("common.running")}</Text>
                             ) : (
                               <Text style={{ fontSize: 11, color: theme.faint }}>· {timeAgo(ses.time?.updated)}</Text>
                             )}
@@ -138,12 +139,12 @@ function DrawerFoot({
     <View>
       <Pressable onPress={onToggleTheme} style={({ pressed }) => [s.footBtn, { backgroundColor: pressed ? theme.l2 : "transparent" }]}>
         <Icon name="sliders" size={16} color={theme.muted} />
-        <Text style={[s.footTxt, { color: theme.muted }]}>Тема</Text>
+        <Text style={[s.footTxt, { color: theme.muted }]}>{t("sessions.theme")}</Text>
         <Text style={{ marginLeft: "auto", fontSize: 12, color: theme.faint }}>{themeLabel}</Text>
       </Pressable>
       <Pressable onPress={onSettings} style={({ pressed }) => [s.footBtn, { backgroundColor: pressed ? theme.l2 : "transparent" }]}>
         <Icon name="settings-gear" size={16} color={theme.muted} />
-        <Text style={[s.footTxt, { color: theme.muted }]}>Настройки</Text>
+        <Text style={[s.footTxt, { color: theme.muted }]}>{t("sessions.settings")}</Text>
       </Pressable>
     </View>
   );
@@ -171,15 +172,15 @@ function timeAgo(ms?: number) {
   if (!ms) return "";
   const d = Date.now() - ms;
   const m = Math.floor(d / 60000);
-  if (m < 1) return "сейчас";
-  if (m < 60) return `${m} мин`;
+  if (m < 1) return t("common.now");
+  if (m < 60) return t("common.minutes", { n: m });
   const h = Math.floor(m / 60);
-  if (h < 24) return `${h} ч`;
+  if (h < 24) return t("common.hours", { n: h });
   return new Date(ms).toLocaleDateString();
 }
 
 function projectOf(ses: { directory?: string }) {
-  if (!ses.directory) return "—";
+  if (!ses.directory) return t("common.dash");
   const base = ses.directory.replace(/\\/g, "/");
   const parts = base.split("/");
   return parts[parts.length - 1] || base;

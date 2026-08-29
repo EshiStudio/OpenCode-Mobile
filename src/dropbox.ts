@@ -1,4 +1,5 @@
 import { fetch as expoFetch } from "expo/fetch";
+import { t } from "./i18n";
 
 /**
  * Dropbox API v2 client.
@@ -26,7 +27,7 @@ function full(rel: string): string {
     .map((p) => p.trim())
     .filter((p) => p && p !== ".")
     .join("/");
-  if (clean.includes("..")) throw new DropboxError(0, "путь не должен содержать ..");
+  if (clean.includes("..")) throw new DropboxError(0, t("tool.err.dotdot"));
   return clean ? ROOT + "/" + clean : ROOT;
 }
 
@@ -38,7 +39,7 @@ async function rpc(token: string, path: string, body: unknown): Promise<Response
       body: JSON.stringify(body),
     });
   } catch {
-    throw new DropboxError(0, "Нет связи с Dropbox");
+    throw new DropboxError(0, t("disk.dropbox.noNetwork"));
   }
 }
 
@@ -50,7 +51,7 @@ async function fail(res: Response, fallback: string): Promise<never> {
   } catch {
     // keep fallback
   }
-  if (res.status === 401) throw new DropboxError(401, "Токен Dropbox отклонён (401): неверный или истёк");
+  if (res.status === 401) throw new DropboxError(401, t("disk.dropbox.tokenRejected"));
   throw new DropboxError(res.status, detail);
 }
 
@@ -60,8 +61,8 @@ export async function makeFolder(token: string, rel: string): Promise<void> {
   const text = await res.text().catch(() => "");
   // Already existing is the expected outcome when reconnecting.
   if (text.includes("path/conflict")) return;
-  if (res.status === 401) throw new DropboxError(401, "Токен Dropbox отклонён (401): неверный или истёк");
-  throw new DropboxError(res.status, text.slice(0, 200) || "Не удалось создать папку");
+  if (res.status === 401) throw new DropboxError(401, t("disk.dropbox.tokenRejected"));
+  throw new DropboxError(res.status, text.slice(0, 200) || t("disk.dropbox.mkdirFailed"));
 }
 
 export async function connect(token: string): Promise<{ root: string }> {
@@ -71,7 +72,7 @@ export async function connect(token: string): Promise<{ root: string }> {
 
 export async function listFolder(token: string, rel: string): Promise<string[]> {
   const res = await rpc(token, "/files/list_folder", { path: full(rel) });
-  if (!res.ok) await fail(res, "Не удалось прочитать папку");
+  if (!res.ok) await fail(res, t("disk.dropbox.readFolderFailed"));
   const j = await res.json();
   const entries: Array<{ name: string; [".tag"]: string }> = j?.entries || [];
   return entries.map((e) => (e[".tag"] === "folder" ? e.name + "/" : e.name));
@@ -91,9 +92,9 @@ export async function uploadText(token: string, rel: string, content: string): P
       body: content,
     });
   } catch {
-    throw new DropboxError(0, "Загрузка в Dropbox прервалась");
+    throw new DropboxError(0, t("disk.dropbox.uploadAborted"));
   }
-  if (!res.ok) await fail(res, "Загрузка отклонена");
+  if (!res.ok) await fail(res, t("disk.dropbox.uploadRejected"));
 }
 
 export async function downloadText(token: string, rel: string): Promise<string> {
@@ -107,13 +108,13 @@ export async function downloadText(token: string, rel: string): Promise<string> 
       },
     });
   } catch {
-    throw new DropboxError(0, "Нет связи с Dropbox");
+    throw new DropboxError(0, t("disk.dropbox.noNetwork"));
   }
-  if (!res.ok) await fail(res, "Файл не прочитан");
+  if (!res.ok) await fail(res, t("disk.dropbox.readFileFailed"));
   return await res.text();
 }
 
 export async function deletePath(token: string, rel: string): Promise<void> {
   const res = await rpc(token, "/files/delete_v2", { path: full(rel) });
-  if (!res.ok) await fail(res, "Не удалось удалить");
+  if (!res.ok) await fail(res, t("disk.dropbox.deleteFailed"));
 }

@@ -1,4 +1,5 @@
 import React, { useRef } from "react";
+import { t } from "./i18n";
 import {
   Image,
   KeyboardAvoidingView,
@@ -96,7 +97,7 @@ export function Composer({
             multiline
             value={value}
             onChangeText={onChange}
-            placeholder="Спросите что угодно…"
+            placeholder={t("composer.placeholder")}
             placeholderTextColor={theme.faint}
             style={{
               fontSize: 14,

@@ -44,10 +44,11 @@ import {
   saveSettings,
   saveYandexToken,
 } from "./storage";
-import { DISK_TOOLS, DOWNLOAD_TOOLS, FILE_TOOLS, WEB_TOOLS, runTool, toolLabel } from "./tools";
-import { APP_TOOLS, AppControl } from "./app-tools";
+import { diskTools, downloadTools, fileTools, webTools, runTool, toolLabel } from "./tools";
+import { appTools, AppControl } from "./app-tools";
+import { t } from "./i18n";
 import { extractToken } from "./yandex";
-import { CloudId, CLOUDS, connect as cloudConnect } from "./clouds";
+import { CloudId, CLOUD_IDS, cloudName, connect as cloudConnect } from "./clouds";
 import { OAuthCloud, refresh as oauthRefresh, signIn, stale } from "./oauth";
 import { APP_VERSION, checkForUpdate, Release } from "./update";
 import { presetName } from "./local-ai";
@@ -310,7 +311,7 @@ export function StoreProvider({
               const msgs = [...(s.messages[sid] || [])];
               const last = msgs[msgs.length - 1];
               if (last && last.info.role === "assistant" && !last.info.time?.completed) {
-                msgs[msgs.length - 1] = { ...last, info: { ...last.info, error: String(p.error || "ошибка") } };
+                msgs[msgs.length - 1] = { ...last, info: { ...last.info, error: String(p.error || t("message.error")) } };
               }
               return { ...s, messages: { ...s.messages, [sid]: msgs }, statuses: { ...s.statuses, [sid]: { type: "idle" } as SessionStatus } };
             });
@@ -452,7 +453,7 @@ export function StoreProvider({
               await apiRef.current?.streamEvents((ev) => applyEvent(ev), ac.signal);
             } catch (e) {
               if (!ac.signal.aborted) {
-                setState((s) => ({ ...s, error: "Переподключение к серверу…" }));
+                setState((s) => ({ ...s, error: t("store.reconnecting") }));
               }
             }
             if (ac.signal.aborted) break;
@@ -465,7 +466,7 @@ export function StoreProvider({
           ...s,
           connected: false,
           connecting: false,
-          error: e instanceof ApiError ? e.message : "Не удалось подключиться к серверу",
+          error: e instanceof ApiError ? e.message : t("store.connectFailed"),
         }));
         onConnectionFailure?.(e);
       }
@@ -518,7 +519,7 @@ export function StoreProvider({
       setState((s) => {
         const local: LocalState = {
           ...s.local,
-          sessions: [{ id: sid, title: "Новая сессия", when: Date.now() }, ...s.local.sessions],
+          sessions: [{ id: sid, title: t("chat.newSession"), when: Date.now() }, ...s.local.sessions],
         };
         saveLocal(local);
         return { ...s, activeId: sid, local };
@@ -548,7 +549,7 @@ export function StoreProvider({
             const local: LocalState = {
               ...s.local,
               sessions: [
-                { id, title: text.slice(0, 34) || "Новая сессия", when: Date.now() },
+                { id, title: text.slice(0, 34) || t("chat.newSession"), when: Date.now() },
                 ...s.local.sessions,
               ],
             };
@@ -574,9 +575,9 @@ export function StoreProvider({
           // The server takes a file part by url; a data: url keeps it self-contained.
           parts.push({ type: "file", url: a.text || a.uri, mediaType: a.mime || "image/jpeg", filename: a.name });
         } else if (a.text) {
-          parts.push({ type: "text", text: `Файл ${a.name}:\n${a.text}` });
+          parts.push({ type: "text", text: t("store.fileWithBody", { name: a.name, text: a.text || "" }) });
         } else if (a.path || a.uri) {
-          parts.push({ type: "text", text: `Файл в контексте: ${a.path || a.uri}` });
+          parts.push({ type: "text", text: t("store.fileInContext", { path: a.path || a.uri || "" }) });
         }
       }
       parts.push({ type: "text", text, mediaType: undefined });
@@ -594,7 +595,7 @@ export function StoreProvider({
           attachments: [],
         }));
       } catch (e) {
-        setState((s) => ({ ...s, error: e instanceof Error ? e.message : "Не удалось отправить сообщение" }));
+        setState((s) => ({ ...s, error: e instanceof Error ? e.message : t("store.sendFailed") }));
       }
     },
     [state.activeId, state.modelId, state.providerId, state.variant, createNew],
@@ -619,29 +620,33 @@ export function StoreProvider({
       const presetId = local.presetID;
       const preset = findPreset(presets, presetId);
       if (!preset) {
-        setState((s) => ({ ...s, error: "Провайдер не найден. Выберите его в Настройках → Провайдеры" }));
+        setState((s) => ({ ...s, error: t("store.noProvider") }));
         return;
       }
       const model = local.modelByPreset[presetId] || local.model || preset.model;
       const apiKey = keys[presetId] || "";
       if (!apiKey || !model) {
-        setState((s) => ({ ...s, error: "Добавьте API-ключ и модель провайдера в Настройках → Провайдеры" }));
+        setState((s) => ({ ...s, error: t("store.noKey") }));
         return;
       }
 
       const prior = local.messages[sid] || [];
       // Web is always available; files and disk follow their switches.
       const tools = [
-        ...WEB_TOOLS,
-        ...APP_TOOLS,
-        ...(settings.localWork ? [...FILE_TOOLS, ...DOWNLOAD_TOOLS] : []),
-        ...(Object.keys(stateRef.current.cloudTokens).length ? DISK_TOOLS : []),
+        ...webTools(),
+        ...appTools(),
+        ...(settings.localWork ? [...fileTools(), ...downloadTools()] : []),
+        ...(Object.keys(stateRef.current.cloudTokens).length ? diskTools() : []),
       ];
       // Images ride along as content parts; anything else becomes text in the turn.
       const images = files.filter((f) => f.kind === "image" && f.text);
       const notes = files
         .filter((f) => f.kind !== "image")
-        .map((f) => (f.text ? `Файл ${f.name}:\n${f.text}` : `Файл: ${f.path || f.uri || f.name}`));
+        .map((f) =>
+          f.text
+            ? t("store.fileWithBody", { name: f.name, text: f.text })
+            : t("store.fileInContext", { path: f.path || f.uri || f.name }),
+        );
       const userText = notes.length ? notes.join("\n\n") + "\n\n" + text : text;
       const userContent: LocalMsg["content"] = images.length
         ? [
@@ -751,7 +756,7 @@ export function StoreProvider({
         patch(acc, true);
       } catch (e) {
         const aborted = e instanceof Error && e.name === "AbortError";
-        const msg = e instanceof LocalAIError ? e.message : aborted ? null : "Ошибка запроса";
+        const msg = e instanceof LocalAIError ? e.message : aborted ? null : t("store.requestError");
         patch(acc || msg || "", true, msg ?? undefined);
       }
     },
@@ -912,8 +917,8 @@ export function StoreProvider({
   }, []);
 
   const connectCloud = useCallback(async (id: CloudId, token: string) => {
-    const t = extractToken(token);
-    if (!t) {
+    const tok = extractToken(token);
+    if (!tok) {
       await saveCloudToken(id, "");
       setState((s) => {
         const cloudTokens = { ...s.cloudTokens };
@@ -923,17 +928,17 @@ export function StoreProvider({
         saveCloudRoots(cloudRoots);
         return { ...s, cloudTokens, cloudRoots };
       });
-      return "Отключено";
+      return t("store.disconnected");
     }
     // Verify by creating the workspace folder — a bad token fails right here.
-    const { root } = await cloudConnect(id, t);
-    await saveCloudToken(id, t);
+    const { root } = await cloudConnect(id, tok);
+    await saveCloudToken(id, tok);
     setState((s) => {
       const cloudRoots = { ...s.cloudRoots, [id]: root };
       saveCloudRoots(cloudRoots);
-      return { ...s, cloudTokens: { ...s.cloudTokens, [id]: t }, cloudRoots };
+      return { ...s, cloudTokens: { ...s.cloudTokens, [id]: tok }, cloudRoots };
     });
-    return "Подключено, рабочая папка " + root;
+    return t("store.connected", { root });
   }, []);
 
   // Kept for the Yandex-specific tool context; delegates to the shared path.
@@ -996,7 +1001,7 @@ export function StoreProvider({
         oauth: { ...s.oauth, [id]: tokens },
       };
     });
-    return "Вход выполнен, рабочая папка " + root;
+    return t("store.signedIn", { root });
   }, []);
 
   const saveYandex = useCallback(
@@ -1088,7 +1093,7 @@ export function StoreProvider({
         setState((s) => ({ ...s, oauth }));
       },
     );
-    Promise.all(CLOUDS.map(async (c) => [c.id, await loadCloudToken(c.id)] as const)).then((pairs) => {
+    Promise.all(CLOUD_IDS.map(async (id) => [id, await loadCloudToken(id)] as const)).then((pairs) => {
       const cloudTokens: Record<string, string> = {};
       pairs.forEach(([id, t]) => {
         if (t) cloudTokens[id] = t;
@@ -1127,33 +1132,38 @@ export function StoreProvider({
       const clouds = Object.keys(s.cloudTokens);
       const preset = findPreset(s.presets, s.local.presetID);
       return [
-        "Провайдеры с ключом: " + (keys.length ? keys.join(", ") : "нет"),
-        "Активная модель: " + (presetName(preset) || s.local.presetID) + " / " + (s.local.model || "не выбрана"),
-        "Облака: " + (clouds.length ? clouds.join(", ") : "нет"),
-        "Локальная работа: " + (s.settings.localWork ? "включена" : "выключена"),
-        "Показывать рассуждения: " + (s.settings.showReasoning ? "да" : "нет"),
+        t("apptool.out.providersWithKeys", { list: keys.length ? keys.join(", ") : t("common.none") }),
+        t("apptool.out.activeModel", {
+          provider: presetName(preset) || s.local.presetID,
+          model: s.local.model || t("settings.model.none"),
+        }),
+        t("apptool.out.clouds", { list: clouds.length ? clouds.join(", ") : t("common.none") }),
+        t("apptool.out.localWork", { state: t(s.settings.localWork ? "apptool.out.enabled" : "apptool.out.disabled") }),
+        t("apptool.out.showReasoning", { state: t(s.settings.showReasoning ? "common.yes" : "common.no") }),
       ].join("\n");
     },
     connectCloud: async (cloud, token) => await connectCloud(cloud as CloudId, token),
     setProviderKey: async (provider, key, model) => {
       const preset = findPreset(stateRef.current.presets, provider);
-      if (!preset) return "Нет такого провайдера: " + provider;
+      if (!preset) return t("apptool.out.noProvider", { name: provider });
       await saveProvider(provider, { key, ...(model ? { model } : {}) });
       if (key) setLocalPreset(provider);
-      return key ? "Ключ сохранён: " + presetName(preset) : "Ключ удалён: " + presetName(preset);
+      return key
+        ? t("apptool.out.keySaved", { name: presetName(preset) })
+        : t("apptool.out.keyRemoved", { name: presetName(preset) });
     },
     setSetting: async (name, value) => {
       const allowed = ["localWork", "autoAllowPermissions", "showReasoning", "expandShell", "expandEdit"];
-      if (!allowed.includes(name)) return "Нет такой настройки: " + name;
+      if (!allowed.includes(name)) return t("apptool.out.noSetting", { name });
       updateSettings({ [name]: value } as Partial<AppSettings>);
-      return "Настройка " + name + ": " + (value ? "включена" : "выключена");
+      return t("apptool.out.settingSet", { name, state: t(value ? "apptool.out.enabled" : "apptool.out.disabled") });
     },
     useModel: async (provider, model) => {
       const preset = findPreset(stateRef.current.presets, provider);
-      if (!preset) return "Нет такого провайдера: " + provider;
+      if (!preset) return t("apptool.out.noProvider", { name: provider });
       setLocalPreset(provider);
       if (model) setLocalModel(model);
-      return "Выбрано: " + presetName(preset) + " / " + model;
+      return t("apptool.out.selected", { provider: presetName(preset), model });
     },
   };
 
@@ -1251,7 +1261,7 @@ export function attachLine(files: Attachment[]): string {
 }
 
 export function sessionTitle(s: SessionInfo): string {
-  return s.title && s.title.trim() ? s.title : "Новая сессия";
+  return s.title && s.title.trim() ? s.title : t("chat.newSession");
 }
 
 export function variantName(v: string): string {

@@ -23,12 +23,25 @@ import { SettingsScreen } from "./settings";
 import { Composer } from "./composer";
 import { Avatar, Wordmark } from "./ui";
 import { catalogModels, presetName } from "./local-ai";
-import { CLOUDS } from "./clouds";
+import { CLOUD_IDS, cloudName } from "./clouds";
+import { Lang, t } from "./i18n";
 import { ProviderPreset } from "./storage";
 import { BrandIcon } from "./icons";
 import { PermissionRequest, ProviderWithModels, SessionInfo, StoredMessage } from "./types";
 
-export function ChatScreen({ theme, dark, setDark }: { theme: Theme; dark: boolean; setDark: (d: boolean) => void }) {
+export function ChatScreen({
+  theme,
+  dark,
+  setDark,
+  lang,
+  setLang,
+}: {
+  theme: Theme;
+  dark: boolean;
+  setDark: (d: boolean) => void;
+  lang: Lang;
+  setLang: (l: Lang) => void;
+}) {
   const store = useStore();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
@@ -50,7 +63,7 @@ export function ChatScreen({ theme, dark, setDark }: { theme: Theme; dark: boole
         id: l.id,
         title: l.title,
         time: { updated: l.when },
-        directory: "Устройство",
+        directory: t("chat.device"),
       } as SessionInfo))
     : store.sessions;
   const msgs: StoredMessage[] = localMode && store.activeId
@@ -110,13 +123,13 @@ export function ChatScreen({ theme, dark, setDark }: { theme: Theme; dark: boole
     ],
   );
   const projDir = active?.directory || pool.find((s) => s.directory)?.directory;
-  const pickedCloud = CLOUDS.find((c) => c.id === store.preferredCloud && store.cloudTokens[c.id]);
-  const projName = localMode ? pickedCloud?.name || "Устройство" : baseName(projDir) || "—";
-  const projAv = localMode ? "У" : projName[0]?.toUpperCase() || "Б";
+  const pickedCloud = CLOUD_IDS.find((id) => id === store.preferredCloud && store.cloudTokens[id]);
+  const projName = localMode ? (pickedCloud ? cloudName(pickedCloud) : t("chat.device")) : baseName(projDir) || t("common.dash");
+  const projAv = localMode ? t("chat.deviceLetter") : projName[0]?.toUpperCase() || t("chat.projectLetter");
 
   const headerSub = active
     ? `${active.model?.providerID || "opencode"} · ${variantName(active.model?.variant || store.variant)}`
-    : "Выберите проект";
+    : t("chat.pickProject");
 
   return (
     <View style={[styles.root, { backgroundColor: theme.bg }]}>
@@ -131,7 +144,7 @@ export function ChatScreen({ theme, dark, setDark }: { theme: Theme; dark: boole
       ) : null}
       <Header
         theme={theme}
-        title={active ? sessionTitle(active) : "Новая сессия"}
+        title={active ? sessionTitle(active) : t("chat.newSession")}
         projectAv={active ? sessionTitle(active).trim().charAt(0).toUpperCase() || projAv : projAv}
         brandMark={localMode}
         hasSession={!!active}
@@ -223,36 +236,44 @@ export function ChatScreen({ theme, dark, setDark }: { theme: Theme; dark: boole
           setHelpOpen(true);
         }}
       />
-      <SettingsScreen theme={theme} dark={dark} setDark={setDark} open={settingsOpen} onClose={() => setSettingsOpen(false)} />{helpOpen ? (
+      <SettingsScreen
+        theme={theme}
+        dark={dark}
+        setDark={setDark}
+        lang={lang}
+        setLang={setLang}
+        open={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+      />{helpOpen ? (
         <View style={[StyleSheet.absoluteFill, { zIndex: 45, backgroundColor: theme.scrim, alignItems: "center", justifyContent: "center", padding: 24 }]}>
           <View style={{ width: "100%", maxWidth: 380, backgroundColor: theme.bg, borderRadius: 12, padding: 18 }}>
-            <Text style={{ fontSize: 14, fontWeight: "600", color: theme.ink, marginBottom: 10 }}>Помощь</Text>
+            <Text style={{ fontSize: 14, fontWeight: "600", color: theme.ink, marginBottom: 10 }}>{t("chat.help")}</Text>
             <Text style={{ fontSize: 12.5, color: theme.muted, lineHeight: 19 }}>
-              Приложение общается с сервером opencode на вашем ПК. Чтобы сервер был доступен с телефона, запустите на ПК:
+              {t("chat.help.body")}
             </Text>
             <Text style={{ fontFamily: "monospace", fontSize: 11.5, color: theme.ink, backgroundColor: theme.l1, padding: 10, borderRadius: 7, marginVertical: 10 }}>
               opencode serve --hostname 0.0.0.0 --port 41111
             </Text>
             <Text style={{ fontSize: 12.5, color: theme.muted, lineHeight: 19 }}>
-              Адрес для подключения — IP этого ПК в локальной сети (например 192.168.1.96:41111), логин opencode, пароль из OPENCODE_SERVER_PASSWORD.
+              {t("chat.help.address")}
             </Text>
             <Pressable
               onPress={() => setHelpOpen(false)}
               style={{ marginTop: 14, height: 40, borderRadius: 8, alignItems: "center", justifyContent: "center", backgroundColor: theme.sndOn }}
             >
-              <Text style={{ color: "#fff", fontSize: 13.5 }}>Понятно</Text>
+              <Text style={{ color: "#fff", fontSize: 13.5 }}>{t("common.gotIt")}</Text>
             </Pressable>
           </View>
         </View>
       ) : null}
 
       {/* sheets */}
-      <BottomSheet theme={theme} open={sheet === "model"} title="Модель" onClose={() => setSheet(null)}>
+      <BottomSheet theme={theme} open={sheet === "model"} title={t("chat.model")} onClose={() => setSheet(null)}>
         <RowList
           key="model-list"
           theme={theme}
           searchable
-          searchPlaceholder="Поиск моделей"
+          searchPlaceholder={t("chat.searchModels")}
           rows={modelRowsMemo}
           onPick={(r) => {
             const [prov, model] = r.id.split("::");
@@ -267,7 +288,7 @@ export function ChatScreen({ theme, dark, setDark }: { theme: Theme; dark: boole
         />
       </BottomSheet>
 
-      <BottomSheet theme={theme} open={sheet === "effort"} title="Размышления" onClose={() => setSheet(null)}>
+      <BottomSheet theme={theme} open={sheet === "effort"} title={t("chat.reasoning")} onClose={() => setSheet(null)}>
         <RowList
           theme={theme}
           rows={store.variants.map((v) => ({
@@ -282,10 +303,10 @@ export function ChatScreen({ theme, dark, setDark }: { theme: Theme; dark: boole
         />
       </BottomSheet>
 
-      <BottomSheet theme={theme} open={sheet === "attach"} title="Добавить в контекст" onClose={() => setSheet(null)}>
+      <BottomSheet theme={theme} open={sheet === "attach"} title={t("chat.addToContext")} onClose={() => setSheet(null)}>
         <RowList
           theme={theme}
-          rows={attachRows}
+          rows={attachRows()}
           onPick={(r) => {
             setSheet(null);
             if (r.id === "project") {
@@ -299,7 +320,7 @@ export function ChatScreen({ theme, dark, setDark }: { theme: Theme; dark: boole
         />
       </BottomSheet>
 
-      <BottomSheet theme={theme} open={sheet === "filePick"} title="Файл из проекта" onClose={() => setSheet(null)}>
+      <BottomSheet theme={theme} open={sheet === "filePick"} title={t("chat.projectFile")} onClose={() => setSheet(null)}>
         <FilePicker
           theme={theme}
           query={fileQuery}
@@ -313,7 +334,7 @@ export function ChatScreen({ theme, dark, setDark }: { theme: Theme; dark: boole
         />
       </BottomSheet>
 
-      <BottomSheet theme={theme} open={sheet === "project"} title="Проект" onClose={() => setSheet(null)}>
+      <BottomSheet theme={theme} open={sheet === "project"} title={t("chat.project")} onClose={() => setSheet(null)}>
         <RowList
           theme={theme}
           rows={storageRows(store.cloudTokens, store.cloudRoots, store.preferredCloud)}
@@ -324,11 +345,11 @@ export function ChatScreen({ theme, dark, setDark }: { theme: Theme; dark: boole
         />
       </BottomSheet>
 
-      <BottomSheet theme={theme} open={sheet === "branch"} title="Ветка" onClose={() => setSheet(null)}>
+      <BottomSheet theme={theme} open={sheet === "branch"} title={t("chat.branch")} onClose={() => setSheet(null)}>
         <RowList theme={theme} rows={[{ id: "1", name: "master" }]} onPick={() => setSheet(null)} />
       </BottomSheet>
 
-      <BottomSheet theme={theme} open={sheet === "more"} title={active ? sessionTitle(active) : "Сессия"} onClose={() => setSheet(null)}>
+      <BottomSheet theme={theme} open={sheet === "more"} title={active ? sessionTitle(active) : t("chat.session")} onClose={() => setSheet(null)}>
         <MoreRows
           theme={theme}
           active={active}
@@ -350,7 +371,7 @@ export function ChatScreen({ theme, dark, setDark }: { theme: Theme; dark: boole
       {renaming ? (
         <View style={[StyleSheet.absoluteFill, { zIndex: 40, backgroundColor: theme.scrim, alignItems: "center", paddingTop: 180 }]}>
           <View style={{ width: "82%", backgroundColor: theme.bg, borderRadius: 12, padding: 16 }}>
-            <Text style={{ fontSize: 13.5, fontWeight: "600", color: theme.ink, marginBottom: 12 }}>Переименовать</Text>
+            <Text style={{ fontSize: 13.5, fontWeight: "600", color: theme.ink, marginBottom: 12 }}>{t("chat.rename")}</Text>
             <TextInput
               value={renameValue}
               onChangeText={setRenameValue}
@@ -359,7 +380,7 @@ export function ChatScreen({ theme, dark, setDark }: { theme: Theme; dark: boole
             />
             <View style={{ flexDirection: "row", justifyContent: "flex-end", gap: 16, marginTop: 14 }}>
               <Pressable onPress={() => setRenaming(null)}>
-                <Text style={{ fontSize: 13.5, color: theme.muted }}>Отмена</Text>
+                <Text style={{ fontSize: 13.5, color: theme.muted }}>{t("common.cancel")}</Text>
               </Pressable>
               <Pressable
                 onPress={() => {
@@ -367,7 +388,7 @@ export function ChatScreen({ theme, dark, setDark }: { theme: Theme; dark: boole
                   setRenaming(null);
                 }}
               >
-                <Text style={{ fontSize: 13.5, color: theme.acc }}>Сохранить</Text>
+                <Text style={{ fontSize: 13.5, color: theme.acc }}>{t("common.save")}</Text>
               </Pressable>
             </View>
           </View>
@@ -380,7 +401,7 @@ export function ChatScreen({ theme, dark, setDark }: { theme: Theme; dark: boole
           <View style={{ backgroundColor: theme.bg, borderRadius: 12, padding: 18 }}>
             <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
               <Icon name="shield" size={16} color={theme.acc} />
-              <Text style={{ fontSize: 13.5, fontWeight: "600", color: theme.ink }}>Разрешение</Text>
+              <Text style={{ fontSize: 13.5, fontWeight: "600", color: theme.ink }}>{t("chat.permission")}</Text>
             </View>
             <Text style={{ marginTop: 10, fontSize: 13.5, lineHeight: 20, color: theme.ink }}>
               {pendingPerm.title}
@@ -395,7 +416,7 @@ export function ChatScreen({ theme, dark, setDark }: { theme: Theme; dark: boole
                 <View style={{ width: 16, height: 16, borderRadius: 4, borderWidth: 1, borderColor: permRemember ? theme.acc : theme.bd, alignItems: "center", justifyContent: "center" }}>
                   {permRemember ? <Icon name="check" size={11} color={theme.acc} /> : null}
                 </View>
-                <Text style={{ fontSize: 12.5, color: theme.muted }}>Запомнить выбор</Text>
+                <Text style={{ fontSize: 12.5, color: theme.muted }}>{t("chat.rememberChoice")}</Text>
               </Pressable>
             </View>
             <View style={{ flexDirection: "row", gap: 10, marginTop: 16 }}>
@@ -407,7 +428,7 @@ export function ChatScreen({ theme, dark, setDark }: { theme: Theme; dark: boole
                   setPermRemember(false);
                 }}
               >
-                <Text style={{ color: theme.err, fontSize: 13.5 }}>Запретить</Text>
+                <Text style={{ color: theme.err, fontSize: 13.5 }}>{t("chat.deny")}</Text>
               </Pressable>
               <Pressable
                 style={{ flex: 1, height: 38, borderRadius: 8, backgroundColor: theme.sndOn, alignItems: "center", justifyContent: "center" }}
@@ -417,7 +438,7 @@ export function ChatScreen({ theme, dark, setDark }: { theme: Theme; dark: boole
                   setPermRemember(false);
                 }}
               >
-                <Text style={{ color: "#ffffff", fontSize: 13.5 }}>Разрешить</Text>
+                <Text style={{ color: "#ffffff", fontSize: 13.5 }}>{t("chat.allow")}</Text>
               </Pressable>
             </View>
           </View>
@@ -521,7 +542,7 @@ function Header({
 
       {update ? (
         <Pressable
-          accessibilityLabel={"Обновление " + update.version}
+          accessibilityLabel={t("chat.update", { version: update.version })}
           onPress={() => Linking.openURL(update.apkUrl || update.pageUrl)}
           style={({ pressed }) => [styles.iconBtn, { backgroundColor: pressed ? theme.l3 : theme.l2 }]}
         >
@@ -551,7 +572,7 @@ function EmptyState({ theme }: { theme: Theme }) {
 }
 
 function modelDisplayName(models: ProviderWithModels[], providerID: string | null, modelID: string | null): string {
-  if (!providerID || !modelID) return "Модель…";
+  if (!providerID || !modelID) return t("chat.modelPlaceholder");
   for (const p of models) {
     if (p.id === providerID) {
       const m = p.models.find((x) => x.id === modelID);
@@ -600,7 +621,7 @@ function modelRows(models: ProviderWithModels[], providerID: string | null, mode
     const names = p.models.map((m) => ({
       id: `${p.id}::${m.id}`,
       name: m.name,
-      badge: m.free ? "Бесплатно" : undefined,
+      badge: m.free ? t("chat.free") : undefined,
       groupOf: p.name,
       selected: m.id === modelID && p.id === providerID,
       lead: <BrandIcon providerID={p.id} size={20} color="#9a9a9a" />,
@@ -610,12 +631,15 @@ function modelRows(models: ProviderWithModels[], providerID: string | null, mode
   return rows;
 }
 
-const attachRows: SheetRow[] = [
-  { id: "photo", name: "Фото", desc: "из галереи устройства", icon: "photo" },
-  { id: "media", name: "Медиа", desc: "изображение, видео или звук", icon: "grid" },
-  { id: "file", name: "Файл с устройства", desc: "любой документ", icon: "open-file" },
-  { id: "project", name: "Файл из проекта", desc: "поиск по файлам проекта", icon: "folder" },
-];
+/** Built per call so the labels follow the interface language. */
+function attachRows(): SheetRow[] {
+  return [
+    { id: "photo", name: t("chat.attach.photo"), desc: t("chat.attach.photoDesc"), icon: "photo" },
+    { id: "media", name: t("chat.attach.media"), desc: t("chat.attach.mediaDesc"), icon: "grid" },
+    { id: "file", name: t("chat.attach.file"), desc: t("chat.attach.fileDesc"), icon: "open-file" },
+    { id: "project", name: t("chat.attach.project"), desc: t("chat.attach.projectDesc"), icon: "folder" },
+  ];
+}
 
 /** Where work is stored: the device, plus every attached cloud. */
 function storageRows(
@@ -626,20 +650,20 @@ function storageRows(
   const rows: SheetRow[] = [
     {
       id: "",
-      name: "Устройство",
-      desc: "рабочая папка приложения",
+      name: t("chat.storage.device"),
+      desc: t("chat.storage.deviceDesc"),
       selected: !picked,
       icon: "folder",
     },
   ];
-  for (const c of CLOUDS) {
-    if (!clouds[c.id]) continue;
+  for (const id of CLOUD_IDS) {
+    if (!clouds[id]) continue;
     rows.push({
-      id: c.id,
-      name: c.name,
-      desc: roots[c.id] || "opencode",
-      selected: picked === c.id,
-      lead: <BrandIcon providerID={c.id} size={20} colored />,
+      id,
+      name: cloudName(id),
+      desc: roots[id] || "opencode",
+      selected: picked === id,
+      lead: <BrandIcon providerID={id} size={20} colored />,
     });
   }
   return rows;
@@ -684,7 +708,7 @@ function FilePicker({
               setRows([]);
             }
           }}
-          placeholder="Поиск по файлам"
+          placeholder={t("chat.searchFiles")}
           placeholderTextColor={theme.faint}
           style={{ flex: 1, color: theme.ink, fontSize: 13.5, marginLeft: 6 }}
         />
@@ -692,7 +716,7 @@ function FilePicker({
       <RowList
         theme={theme}
         rows={rows}
-        emptyText="Начните вводить…"
+        emptyText={t("chat.startTyping")}
         onPick={(r) => onPick({ name: r.name, path: String(r.desc || r.name) })}
       />
     </View>
@@ -705,11 +729,11 @@ function MoreRows({ theme, active, onRename, onDelete, onClose }: { theme: Theme
     <RowList
       theme={theme}
       rows={[
-        { id: "rename", name: "Переименовать", icon: "pencil-line" },
-        { id: "share", name: "Поделиться сессией", icon: "share" },
-        { id: "review", name: "Открыть ревью изменений", icon: "review" },
+        { id: "rename", name: t("chat.rename"), icon: "pencil-line" },
+        { id: "share", name: t("chat.shareSession"), icon: "share" },
+        { id: "review", name: t("chat.openReview"), icon: "review" },
         active
-          ? { id: "delete", name: "Удалить сессию", icon: "trash" }
+          ? { id: "delete", name: t("chat.deleteSession"), icon: "trash" }
           : { id: "none", name: "", icon: "plus" },
       ].filter((r) => r.id !== "none")}
       onPick={(r) => {

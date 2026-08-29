@@ -1,4 +1,5 @@
 import { Directory, File, Paths } from "expo-file-system";
+import { t } from "./i18n";
 
 /**
  * Picking, attaching and exporting files.
@@ -38,7 +39,7 @@ export function isImageName(name: string, mime?: string): boolean {
 }
 
 function describe(f: File): Picked {
-  const name = f.name || "файл";
+  const name = f.name || t("media.file");
   const mime = f.type || guessMime(name);
   return { name, uri: f.uri, mime, size: f.size || 0, isImage: isImageName(name, mime) };
 }
@@ -110,8 +111,8 @@ export function isTextual(name: string, mime?: string): boolean {
 /** Head of a text file, for attaching source code or notes to the prompt. */
 export async function textPreview(p: Picked, limit = 12000): Promise<string | null> {
   try {
-    const t = await new File(p.uri).text();
-    return t.length > limit ? t.slice(0, limit) + "\n… (файл обрезан)" : t;
+    const body = await new File(p.uri).text();
+    return body.length > limit ? body.slice(0, limit) + t("media.truncated") : body;
   } catch {
     return null;
   }
@@ -125,19 +126,19 @@ export type SaveResult = { saved: boolean; where?: string; reason?: string };
  * this, so the picker is not an extra step — it is the only way.
  */
 export async function exportToDevice(source: File, name?: string): Promise<SaveResult> {
-  if (!source.exists) return { saved: false, reason: "файл не найден" };
+  if (!source.exists) return { saved: false, reason: t("media.noFile") };
   let target: Directory;
   try {
     target = await Directory.pickDirectoryAsync();
   } catch {
-    return { saved: false, reason: "папка не выбрана" };
+    return { saved: false, reason: t("media.noFolder") };
   }
-  if (!target) return { saved: false, reason: "папка не выбрана" };
+  if (!target) return { saved: false, reason: t("media.noFolder") };
   const dest = new File(target, sanitize(name || source.name));
   try {
     await source.copy(dest, { overwrite: true } as never);
   } catch (e) {
-    return { saved: false, reason: e instanceof Error ? e.message : "не удалось сохранить" };
+    return { saved: false, reason: e instanceof Error ? e.message : t("media.saveFailed") };
   }
   return { saved: true, where: target.uri };
 }
@@ -157,14 +158,14 @@ export async function downloadToDevice(url: string, name?: string): Promise<Save
   try {
     file = await downloadToCache(url, name);
   } catch (e) {
-    return { saved: false, reason: e instanceof Error ? e.message : "не удалось скачать" };
+    return { saved: false, reason: e instanceof Error ? e.message : t("media.downloadFailed") };
   }
   return exportToDevice(file, name);
 }
 
 export function humanSize(bytes: number): string {
   if (!bytes) return "";
-  if (bytes < 1024) return bytes + " Б";
-  if (bytes < 1024 * 1024) return Math.round(bytes / 1024) + " КБ";
-  return (bytes / (1024 * 1024)).toFixed(1) + " МБ";
+  if (bytes < 1024) return t("size.b", { n: bytes });
+  if (bytes < 1024 * 1024) return t("size.kb", { n: Math.round(bytes / 1024) });
+  return t("size.mb", { n: (bytes / (1024 * 1024)).toFixed(1) });
 }

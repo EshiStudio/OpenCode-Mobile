@@ -17,27 +17,21 @@ import {
 import { BrandIcon, DriveIcon, Icon, IconName } from "./icons";
 import { Theme } from "./theme";
 import { useStore, variantName } from "./store";
-import { BUILTIN_IDS, FEATURED_IDS, catalogModels, presetName } from "./local-ai";
+import { BUILTIN_IDS, FEATURED_IDS, catalogModels, presetDesc, presetName } from "./local-ai";
 import { ProviderPreset } from "./storage";
-import { CLOUDS, CloudId } from "./clouds";
+import { CLOUD_IDS, CloudId, cloudHint, cloudName } from "./clouds";
+import { Lang, LANGS, t } from "./i18n";
 
 /**
  * Settings is a small navigation stack: a full-screen list of grouped rows, and
  * one pushed screen per topic. Everything a row leads to gets the whole width,
  * which the provider search and the cloud forms need.
  */
-type Page = "root" | "basic" | "appearance" | "providers" | "models" | "clouds" | "server" | "about";
+type Page = "root" | "basic" | "appearance" | "language" | "providers" | "models" | "clouds" | "server" | "about";
 
-const TITLES: Record<Page, string> = {
-  root: "Настройки",
-  basic: "Основные",
-  appearance: "Внешний вид",
-  providers: "Провайдеры",
-  models: "Модель",
-  clouds: "Облака",
-  server: "Сервер opencode",
-  about: "О программе",
-};
+function pageTitle(p: Page): string {
+  return t("settings." + p);
+}
 
 /** Android resizes the window for the keyboard already; only iOS needs padding. */
 const AVOID = Platform.OS === "ios" ? "padding" : undefined;
@@ -46,12 +40,16 @@ export function SettingsScreen({
   theme,
   dark,
   setDark,
+  lang,
+  setLang,
   open,
   onClose,
 }: {
   theme: Theme;
   dark: boolean;
   setDark: (d: boolean) => void;
+  lang: Lang;
+  setLang: (l: Lang) => void;
   open: boolean;
   onClose: () => void;
 }) {
@@ -83,7 +81,7 @@ export function SettingsScreen({
             <Icon name="arrow-left" size={16} color={theme.ink} />
           </Pressable>
           <Text style={{ flex: 1, textAlign: "center", fontSize: 15.5, fontWeight: "600", color: theme.ink }} numberOfLines={1}>
-            {TITLES[page]}
+            {pageTitle(page)}
           </Text>
           <View style={s.backBtn} />
         </View>
@@ -94,9 +92,10 @@ export function SettingsScreen({
             keyboardShouldPersistTaps="handled"
             keyboardDismissMode="on-drag"
           >
-            {page === "root" ? <RootPage theme={theme} dark={dark} go={setPage} /> : null}
+            {page === "root" ? <RootPage theme={theme} dark={dark} lang={lang} go={setPage} /> : null}
             {page === "basic" ? <BasicSection theme={theme} /> : null}
             {page === "appearance" ? <AppearanceSection theme={theme} dark={dark} setDark={setDark} /> : null}
+            {page === "language" ? <LanguageSection theme={theme} lang={lang} setLang={setLang} /> : null}
             {page === "providers" ? <ProvidersSection theme={theme} /> : null}
             {page === "models" ? <ModelsSection theme={theme} /> : null}
             {page === "clouds" ? <CloudsSection theme={theme} /> : null}
@@ -110,10 +109,10 @@ export function SettingsScreen({
 }
 
 /** The list on the screenshot: grouped cards, a value on the right, a chevron. */
-function RootPage({ theme, dark, go }: { theme: Theme; dark: boolean; go: (p: Page) => void }) {
+function RootPage({ theme, dark, lang, go }: { theme: Theme; dark: boolean; lang: Lang; go: (p: Page) => void }) {
   const store = useStore();
   const keyed = store.providers.filter((p) => store.keys[p.id]);
-  const clouds = CLOUDS.filter((c) => store.cloudTokens[c.id]);
+  const clouds = CLOUD_IDS.filter((id) => store.cloudTokens[id]);
   const model = store.isLocal
     ? store.local.modelByPreset[store.local.presetID] || store.local.model
     : store.models.find((p) => p.id === store.providerId)?.models.find((m) => m.id === store.modelId)?.name;
@@ -121,47 +120,61 @@ function RootPage({ theme, dark, go }: { theme: Theme; dark: boolean; go: (p: Pa
   return (
     <>
       <GroupTitle theme={theme} first>
-        Приложение
+        {t("settings.group.app")}
       </GroupTitle>
       <NavCard theme={theme}>
-        <NavRow theme={theme} icon="sliders" title="Основные" onPress={() => go("basic")} />
-        <NavRow theme={theme} icon="moon" title="Внешний вид" value={dark ? "Тёмная" : "Светлая"} last onPress={() => go("appearance")} />
+        <NavRow theme={theme} icon="sliders" title={t("settings.basic")} onPress={() => go("basic")} />
+        <NavRow
+          theme={theme}
+          icon="globe"
+          title={t("settings.language")}
+          value={LANGS.find((l) => l.id === lang)?.name}
+          onPress={() => go("language")}
+        />
+        <NavRow
+          theme={theme}
+          icon="moon"
+          title={t("settings.appearance")}
+          value={t(dark ? "settings.theme.dark" : "settings.theme.light")}
+          last
+          onPress={() => go("appearance")}
+        />
       </NavCard>
 
-      <GroupTitle theme={theme}>Модели</GroupTitle>
+      <GroupTitle theme={theme}>{t("settings.group.models")}</GroupTitle>
       <NavCard theme={theme}>
         <NavRow
           theme={theme}
           icon="providers"
-          title="Провайдеры"
-          value={keyed.length ? keyed.length + " подключено" : "нет"}
+          title={t("settings.providers")}
+          value={keyed.length ? t("settings.providers.count", { n: keyed.length }) : t("common.none")}
           onPress={() => go("providers")}
         />
-        <NavRow theme={theme} icon="models" title="Модель" value={model || "не выбрана"} last onPress={() => go("models")} />
+        <NavRow theme={theme} icon="models" title={t("settings.models")} value={model || t("settings.model.none")} last onPress={() => go("models")} />
       </NavCard>
 
-      <GroupTitle theme={theme}>Хранилища</GroupTitle>
+      <GroupTitle theme={theme}>{t("settings.group.storage")}</GroupTitle>
       <NavCard theme={theme}>
         <NavRow
           theme={theme}
           icon="cloud"
-          title="Облака"
-          value={clouds.length ? clouds.map((c) => c.name).join(", ") : "не подключены"}
+          title={t("settings.clouds")}
+          value={clouds.length ? clouds.map(cloudName).join(", ") : t("settings.clouds.none")}
           onPress={() => go("clouds")}
         />
         <NavRow
           theme={theme}
           icon="terminal"
-          title="Сервер opencode"
-          value={store.serverVersion ? "v" + store.serverVersion : "выключен"}
+          title={t("settings.server")}
+          value={store.serverVersion ? "v" + store.serverVersion : t("settings.server.off")}
           last
           onPress={() => go("server")}
         />
       </NavCard>
 
-      <GroupTitle theme={theme}>О программе</GroupTitle>
+      <GroupTitle theme={theme}>{t("settings.group.about")}</GroupTitle>
       <NavCard theme={theme}>
-        <NavRow theme={theme} icon="info" title="Версия и обновления" value={store.appVersion} last onPress={() => go("about")} />
+        <NavRow theme={theme} icon="info" title={t("settings.versionAndUpdates")} value={store.appVersion} last onPress={() => go("about")} />
       </NavCard>
     </>
   );
@@ -234,8 +247,8 @@ function Toggle({ theme, value, onChange }: { theme: Theme; value: boolean; onCh
 
 function AppearanceSection({ theme, dark, setDark }: { theme: Theme; dark: boolean; setDark: (d: boolean) => void }) {
   const options: Array<{ id: boolean; name: string; icon: IconName }> = [
-    { id: false, name: "Светлая", icon: "sun" },
-    { id: true, name: "Тёмная", icon: "moon" },
+    { id: false, name: t("settings.theme.light"), icon: "sun" },
+    { id: true, name: t("settings.theme.dark"), icon: "moon" },
   ];
   return (
     <NavCard theme={theme}>
@@ -258,6 +271,28 @@ function AppearanceSection({ theme, dark, setDark }: { theme: Theme; dark: boole
   );
 }
 
+function LanguageSection({ theme, lang, setLang }: { theme: Theme; lang: Lang; setLang: (l: Lang) => void }) {
+  return (
+    <NavCard theme={theme}>
+      {LANGS.map((o, i) => (
+        <Pressable
+          key={o.id}
+          onPress={() => setLang(o.id)}
+          style={({ pressed }) => [
+            s.navRow,
+            i < LANGS.length - 1 && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.bdSoft },
+            { backgroundColor: pressed ? theme.l2 : "transparent" },
+          ]}
+        >
+          <Icon name="globe" size={17} color={theme.ink} />
+          <Text style={{ flex: 1, fontSize: 14.5, color: theme.ink }}>{o.name}</Text>
+          {lang === o.id ? <Icon name="check" size={15} color={theme.acc} /> : null}
+        </Pressable>
+      ))}
+    </NavCard>
+  );
+}
+
 function AboutSection({ theme }: { theme: Theme }) {
   const store = useStore();
   const [repo, setRepo] = useState(store.updateRepo);
@@ -272,7 +307,13 @@ function AboutSection({ theme }: { theme: Theme }) {
     await store.setUpdateRepo(repo.trim());
     const rel = await store.checkUpdate();
     setBusy(false);
-    setNote(rel ? "Доступна версия " + rel.version : repo.trim() ? "Установлена последняя версия" : "Укажите репозиторий");
+    setNote(
+      rel
+        ? t("settings.about.available", { version: rel.version })
+        : repo.trim()
+          ? t("settings.about.upToDate")
+          : t("settings.about.needRepo"),
+    );
   };
 
   return (
@@ -280,15 +321,15 @@ function AboutSection({ theme }: { theme: Theme }) {
       <Card theme={theme}>
         <Row theme={theme}>
           <View style={s.rowText}>
-            <Text style={{ fontSize: 13.5, color: theme.ink, fontWeight: "600" }}>Версия приложения</Text>
+            <Text style={{ fontSize: 13.5, color: theme.ink, fontWeight: "600" }}>{t("settings.about.version")}</Text>
           </View>
           <Text style={{ fontSize: 13, color: theme.muted }}>{store.appVersion}</Text>
         </Row>
         <Row theme={theme} last>
           <View style={s.rowText}>
-            <Text style={{ fontSize: 13.5, color: theme.ink, fontWeight: "600" }}>Репозиторий обновлений</Text>
+            <Text style={{ fontSize: 13.5, color: theme.ink, fontWeight: "600" }}>{t("settings.about.repo")}</Text>
             <Text style={{ fontSize: 12, color: theme.muted, marginTop: 2 }}>
-              GitHub в формате owner/repo — приложение смотрит его релизы при запуске.
+              {t("settings.about.repoDesc")}
             </Text>
             <TextInput
               value={repo}
@@ -309,7 +350,7 @@ function AboutSection({ theme }: { theme: Theme }) {
         style={({ pressed }) => [s.wideBtn, { backgroundColor: pressed ? theme.l3 : theme.sndOn }]}
       >
         <Text style={{ fontSize: 13.5, color: "#ffffff", fontWeight: "600" }}>
-          {busy ? "Проверяем…" : "Проверить обновления"}
+          {busy ? t("common.checking") : t("settings.about.check")}
         </Text>
       </Pressable>
       {note ? <Text style={{ fontSize: 12, color: theme.muted, marginTop: 10 }}>{note}</Text> : null}
@@ -318,7 +359,7 @@ function AboutSection({ theme }: { theme: Theme }) {
           onPress={() => Linking.openURL(store.update!.apkUrl || store.update!.pageUrl)}
           style={({ pressed }) => [s.wideBtn, s.btnGhost, { borderColor: theme.bd, backgroundColor: pressed ? theme.l2 : "transparent" }]}
         >
-          <Text style={{ fontSize: 13.5, color: theme.acc }}>Скачать {store.update.version}</Text>
+          <Text style={{ fontSize: 13.5, color: theme.acc }}>{t("settings.about.download", { version: store.update.version })}</Text>
         </Pressable>
       ) : null}
     </>
@@ -331,38 +372,38 @@ function BasicSection({ theme }: { theme: Theme }) {
     <Card theme={theme}>
       <Row theme={theme}>
         <View style={s.rowText}>
-          <Text style={{ fontSize: 13.5, color: theme.ink, fontWeight: "600" }}>Автоматически принимать разрешения</Text>
-          <Text style={{ fontSize: 12, color: theme.muted, marginTop: 2 }}>Запросы на разрешения будут одобряться автоматически</Text>
+          <Text style={{ fontSize: 13.5, color: theme.ink, fontWeight: "600" }}>{t("settings.autoAllow")}</Text>
+          <Text style={{ fontSize: 12, color: theme.muted, marginTop: 2 }}>{t("settings.autoAllowDesc")}</Text>
         </View>
         <Toggle theme={theme} value={store.settings.autoAllowPermissions} onChange={(v) => store.updateSettings({ autoAllowPermissions: v })} />
       </Row>
       <Row theme={theme}>
         <View style={s.rowText}>
-          <Text style={{ fontSize: 13.5, color: theme.ink, fontWeight: "600" }}>Локальная работа</Text>
+          <Text style={{ fontSize: 13.5, color: theme.ink, fontWeight: "600" }}>{t("settings.localWork")}</Text>
           <Text style={{ fontSize: 12, color: theme.muted, marginTop: 2 }}>
-            Дать нейросети доступ к устройству для локальной работы: создание папок и файлов
+            {t("settings.localWorkDesc")}
           </Text>
         </View>
         <Toggle theme={theme} value={store.settings.localWork} onChange={(v) => store.updateSettings({ localWork: v })} />
       </Row>
       <Row theme={theme}>
         <View style={s.rowText}>
-          <Text style={{ fontSize: 13.5, color: theme.ink, fontWeight: "600" }}>Показывать сводки рассуждений</Text>
-          <Text style={{ fontSize: 12, color: theme.muted, marginTop: 2 }}>Отображать сводки рассуждений модели</Text>
+          <Text style={{ fontSize: 13.5, color: theme.ink, fontWeight: "600" }}>{t("settings.showReasoning")}</Text>
+          <Text style={{ fontSize: 12, color: theme.muted, marginTop: 2 }}>{t("settings.showReasoningDesc")}</Text>
         </View>
         <Toggle theme={theme} value={store.settings.showReasoning} onChange={(v) => store.updateSettings({ showReasoning: v })} />
       </Row>
       <Row theme={theme}>
         <View style={s.rowText}>
-          <Text style={{ fontSize: 13.5, color: theme.ink, fontWeight: "600" }}>Разворачивать элементы инструмента shell</Text>
-          <Text style={{ fontSize: 12, color: theme.muted, marginTop: 2 }}>Показывать элементы инструмента shell развернутыми</Text>
+          <Text style={{ fontSize: 13.5, color: theme.ink, fontWeight: "600" }}>{t("settings.expandShell")}</Text>
+          <Text style={{ fontSize: 12, color: theme.muted, marginTop: 2 }}>{t("settings.expandShellDesc")}</Text>
         </View>
         <Toggle theme={theme} value={store.settings.expandShell} onChange={(v) => store.updateSettings({ expandShell: v })} />
       </Row>
       <Row theme={theme} last>
         <View style={s.rowText}>
-          <Text style={{ fontSize: 13.5, color: theme.ink, fontWeight: "600" }}>Разворачивать элементы инструмента edit</Text>
-          <Text style={{ fontSize: 12, color: theme.muted, marginTop: 2 }}>Показывать элементы инструментов edit, write и patch развернутыми</Text>
+          <Text style={{ fontSize: 13.5, color: theme.ink, fontWeight: "600" }}>{t("settings.expandEdit")}</Text>
+          <Text style={{ fontSize: 12, color: theme.muted, marginTop: 2 }}>{t("settings.expandEditDesc")}</Text>
         </View>
         <Toggle theme={theme} value={store.settings.expandEdit} onChange={(v) => store.updateSettings({ expandEdit: v })} />
       </Row>
@@ -404,7 +445,7 @@ function CloudRow({ theme, cloud }: { theme: Theme; cloud: { id: CloudId; name: 
       setOpen(false);
     } catch (e) {
       setFailed(true);
-      setNote(e instanceof Error ? e.message : "Не удалось подключить");
+      setNote(e instanceof Error ? e.message : t("settings.cloud.connectFailed"));
     }
     setBusy(false);
   };
@@ -425,7 +466,7 @@ function CloudRow({ theme, cloud }: { theme: Theme; cloud: { id: CloudId; name: 
         <View style={{ flex: 1 }} />
         {connected ? (
           <Pressable onPress={() => guard(() => store.connectCloud(cloud.id, ""))} hitSlop={10}>
-            <Text style={{ fontSize: 12.5, color: theme.muted }}>Отключить</Text>
+            <Text style={{ fontSize: 12.5, color: theme.muted }}>{t("common.disconnect")}</Text>
           </Pressable>
         ) : (
           <Pressable
@@ -438,7 +479,7 @@ function CloudRow({ theme, cloud }: { theme: Theme; cloud: { id: CloudId; name: 
           >
             <Icon name={oauth ? "link" : "plus"} size={11} color={theme.ink} />
             <Text style={{ fontSize: 12.5, color: theme.ink }}>
-              {busy ? "…" : oauth ? (ready ? "Войти" : "Настроить") : "Подключить"}
+              {busy ? "…" : oauth ? (ready ? t("settings.cloud.signIn") : t("settings.cloud.setUp")) : t("common.connect")}
             </Text>
           </Pressable>
         )}
@@ -452,23 +493,23 @@ function CloudRow({ theme, cloud }: { theme: Theme; cloud: { id: CloudId; name: 
               <TextInput
                 value={clientId}
                 onChangeText={setClientIdInput}
-                placeholder={cloud.id === "gdrive" ? "…apps.googleusercontent.com" : "ключ приложения Dropbox"}
+                placeholder={cloud.id === "gdrive" ? "…apps.googleusercontent.com" : t("settings.cloud.clientIdHint")}
                 placeholderTextColor={theme.faint}
                 autoCapitalize="none"
                 autoCorrect={false}
                 style={[s.textInput, { color: theme.ink, borderColor: theme.bd, backgroundColor: theme.bg }]}
               />
               <Text style={{ fontSize: 11, color: theme.faint, marginTop: 6, lineHeight: 15 }}>
-                Redirect URI приложения: opencodemobile://oauth
+                {t("settings.cloud.redirect")}
               </Text>
             </>
           ) : (
             <>
-              <Text style={[s.fieldLabel, { color: theme.faint }]}>Токен доступа</Text>
+              <Text style={[s.fieldLabel, { color: theme.faint }]}>{t("settings.cloud.token")}</Text>
               <TextInput
                 value={token}
                 onChangeText={setToken}
-                placeholder="вставьте токен"
+                placeholder={t("settings.cloud.tokenPlaceholder")}
                 placeholderTextColor={theme.faint}
                 autoCapitalize="none"
                 autoCorrect={false}
@@ -491,14 +532,14 @@ function CloudRow({ theme, cloud }: { theme: Theme; cloud: { id: CloudId; name: 
               style={({ pressed }) => [s.btn, { backgroundColor: pressed ? theme.l3 : theme.sndOn }]}
             >
               <Text style={{ fontSize: 12.5, color: "#ffffff" }}>
-                {busy ? "Проверка…" : oauth ? "Сохранить и войти" : "Подключить"}
+                {busy ? t("common.checking") : oauth ? t("settings.cloud.saveAndSignIn") : t("common.connect")}
               </Text>
             </Pressable>
             <Pressable
               onPress={() => setOpen(false)}
               style={({ pressed }) => [s.btn, s.btnGhost, { borderColor: theme.bd, backgroundColor: pressed ? theme.l2 : "transparent" }]}
             >
-              <Text style={{ fontSize: 12.5, color: theme.muted }}>Отмена</Text>
+              <Text style={{ fontSize: 12.5, color: theme.muted }}>{t("common.cancel")}</Text>
             </Pressable>
           </View>
         </View>
@@ -516,15 +557,15 @@ function CloudsSection({ theme }: { theme: Theme }) {
   return (
     <>
       <Text style={{ fontSize: 12, color: theme.muted, marginBottom: 10, lineHeight: 17 }}>
-        Куда складывать файлы, когда локальная работа выключена. Рабочая папка opencode создаётся при подключении.
+        {t("settings.clouds.intro")}
       </Text>
       <ListCard theme={theme}>
-        {CLOUDS.map((c, i) => (
+        {CLOUD_IDS.map((id, i) => (
           <View
-            key={c.id}
-            style={i < CLOUDS.length - 1 ? { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.bdSoft } : undefined}
+            key={id}
+            style={i < CLOUD_IDS.length - 1 ? { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.bdSoft } : undefined}
           >
-            <CloudRow theme={theme} cloud={c} />
+            <CloudRow theme={theme} cloud={{ id, name: cloudName(id), hint: cloudHint(id) }} />
           </View>
         ))}
       </ListCard>
@@ -541,7 +582,7 @@ function ServerSection({ theme }: { theme: Theme }) {
           <View style={{ flexDirection: "row", alignItems: "center", gap: 9 }}>
             <Icon name="terminal" size={16} color={theme.ink} />
             <Text style={{ fontSize: 13.5, color: theme.ink, fontWeight: "600", flexShrink: 1 }} numberOfLines={1}>
-              Сервер на компьютере
+              {t("settings.server.card")}
             </Text>
             {store.serverVersion ? (
               <Text style={[s.tag, { color: theme.ok, backgroundColor: theme.okBg }]}>v{store.serverVersion}</Text>
@@ -549,13 +590,13 @@ function ServerSection({ theme }: { theme: Theme }) {
           </View>
           <Text style={{ fontSize: 12, color: theme.muted, marginTop: 5, lineHeight: 16 }}>
             {store.serverVersion
-              ? "Подключено — сессии и инструменты идут через сервер."
-              : "Необязательно. Нужен для работы с проектами на ПК."}
+              ? t("settings.server.connected")
+              : t("settings.server.optional")}
           </Text>
         </View>
       </ListCard>
       <Text style={{ fontSize: 12, color: theme.muted, marginTop: 12, lineHeight: 17 }}>
-        Запустите на ПК и укажите его адрес в локальной сети:
+        {t("settings.server.run")}
       </Text>
       <Text
         selectable
@@ -570,7 +611,7 @@ function ServerSection({ theme }: { theme: Theme }) {
 
 /** Where a connected provider's credentials came from. */
 function sourceBadge(builtin: boolean): string {
-  return builtin ? "Ключ API" : "Пользовательский";
+  return t(builtin ? "settings.providers.sourceKey" : "settings.providers.sourceCustom");
 }
 
 function ListCard({ theme, children }: { theme: Theme; children: React.ReactNode }) {
@@ -609,10 +650,10 @@ function ConnectedRow({
         {presetName(preset)}
       </Text>
       <Text style={[s.tag, { color: theme.muted, backgroundColor: theme.l3 }]}>{sourceBadge(builtin)}</Text>
-      {active ? <View accessibilityLabel="активен" style={[s.dot, { backgroundColor: theme.ok }]} /> : null}
+      {active ? <View accessibilityLabel={t("settings.providers.activeLabel")} style={[s.dot, { backgroundColor: theme.ok }]} /> : null}
       <View style={{ flex: 1 }} />
       <Pressable onPress={onDisconnect} hitSlop={10}>
-        <Text style={{ fontSize: 12.5, color: theme.muted }}>Отключить</Text>
+        <Text style={{ fontSize: 12.5, color: theme.muted }}>{t("common.disconnect")}</Text>
       </Pressable>
     </Pressable>
   );
@@ -643,12 +684,10 @@ function PopularRow({
           style={({ pressed }) => [s.connectBtn, { borderColor: theme.bd, backgroundColor: pressed ? theme.l3 : theme.bg }]}
         >
           <Icon name="plus" size={11} color={theme.ink} />
-          <Text style={{ fontSize: 12.5, color: theme.ink }}>Подключить</Text>
+          <Text style={{ fontSize: 12.5, color: theme.ink }}>{t("common.connect")}</Text>
         </Pressable>
       </View>
-      {preset.desc ? (
-        <Text style={{ fontSize: 12, color: theme.muted, marginTop: 5, lineHeight: 16 }}>{preset.desc}</Text>
-      ) : null}
+      <Text style={{ fontSize: 12, color: theme.muted, marginTop: 5, lineHeight: 16 }}>{presetDesc(preset)}</Text>
     </View>
   );
 }
@@ -698,19 +737,19 @@ function ProvidersSection({ theme }: { theme: Theme }) {
         </ListCard>
       ) : (
         <Text style={{ fontSize: 12.5, color: theme.muted, marginBottom: 4 }}>
-          Пока не подключён ни один провайдер.
+          {t("settings.providers.emptyState")}
         </Text>
       )}
 
       <Text style={[s.sectionTitle, { color: theme.ink }]}>
-        {q ? "Результаты поиска" : "Популярные провайдеры"}
+        {q ? t("settings.providers.searchResults") : t("settings.providers.popular")}
       </Text>
       <View style={[s.search, { borderColor: theme.bd, backgroundColor: theme.l1 }]}>
         <Icon name="magnifying-glass" size={13} color={theme.faint} />
         <TextInput
           value={query}
           onChangeText={setQuery}
-          placeholder={`Поиск среди ${rest.length} провайдеров`}
+          placeholder={t("settings.providers.searchPlaceholder", { n: rest.length })}
           placeholderTextColor={theme.faint}
           autoCapitalize="none"
           autoCorrect={false}
@@ -737,22 +776,22 @@ function ProvidersSection({ theme }: { theme: Theme }) {
         </ListCard>
       ) : (
         <Text style={{ fontSize: 12.5, color: theme.faint, paddingVertical: 20, textAlign: "center" }}>
-          {q ? "Ничего не найдено" : "Все популярные провайдеры уже подключены"}
+          {q ? t("common.nothingFound") : t("settings.providers.allConnected")}
         </Text>
       )}
       {q && found.length > list.length ? (
         <Text style={{ fontSize: 11.5, color: theme.faint, marginTop: 8 }}>
-          Показаны первые {list.length} из {found.length} — уточните запрос.
+          {t("settings.providers.shownFirst", { shown: list.length, total: found.length })}
         </Text>
       ) : null}
 
-      <Text style={[s.sectionTitle, { color: theme.ink }]}>Другое</Text>
+      <Text style={[s.sectionTitle, { color: theme.ink }]}>{t("settings.providers.other")}</Text>
       <ListCard theme={theme}>
         <View style={s.pitchRow}>
           <View style={{ flexDirection: "row", alignItems: "center", gap: 9 }}>
             <Icon name="models" size={16} color={theme.ink} />
             <Text style={{ fontSize: 13.5, color: theme.ink, fontWeight: "600", flexShrink: 1 }} numberOfLines={1}>
-              Свой провайдер
+              {t("settings.providers.custom")}
             </Text>
             <View style={{ flex: 1 }} />
             <Pressable
@@ -760,11 +799,11 @@ function ProvidersSection({ theme }: { theme: Theme }) {
               style={({ pressed }) => [s.connectBtn, { borderColor: theme.bd, backgroundColor: pressed ? theme.l3 : theme.bg }]}
             >
               <Icon name="plus" size={11} color={theme.ink} />
-              <Text style={{ fontSize: 12.5, color: theme.ink }}>Подключить</Text>
+              <Text style={{ fontSize: 12.5, color: theme.ink }}>{t("common.connect")}</Text>
             </Pressable>
           </View>
           <Text style={{ fontSize: 12, color: theme.muted, marginTop: 5, lineHeight: 16 }}>
-            Любой API, совместимый с OpenAI
+            {t("settings.providers.customDesc")}
           </Text>
         </View>
       </ListCard>
@@ -805,10 +844,14 @@ function ProviderDialog({ theme, dialog, onClose }: { theme: Theme; dialog: Dial
 
   const configure = dialog.kind === "configure";
   const custom = dialog.kind === "custom";
-  const name = preset ? presetName(preset) : "провайдера";
+  const name = preset ? presetName(preset) : t("dialog.providerFallback");
   const active = !!preset && store.local.presetID === preset.id;
 
-  const title = custom ? "Добавить провайдера" : configure ? `Настроить ${name}` : `Подключить ${name}`;
+  const title = custom
+    ? t("dialog.addProvider")
+    : configure
+      ? t("dialog.configureProvider", { name })
+      : t("dialog.connectProvider", { name });
 
   const fetchModels = async () => {
     if (!preset || !key.trim()) return;
@@ -823,11 +866,11 @@ function ProviderDialog({ theme, dialog, onClose }: { theme: Theme; dialog: Dial
     if (custom) {
       const base = url.trim().replace(/\/+$/, "");
       if (!/^https?:\/\/.+/.test(base)) {
-        setErr("Адрес должен начинаться с http:// или https://");
+        setErr(t("dialog.errBadUrl"));
         return;
       }
       if (!model.trim()) {
-        setErr("Укажите идентификатор модели");
+        setErr(t("dialog.errNoModel"));
         return;
       }
       const newId = "custom_" + Date.now();
@@ -835,7 +878,7 @@ function ProviderDialog({ theme, dialog, onClose }: { theme: Theme; dialog: Dial
         id: newId,
         baseURL: base,
         model: model.trim(),
-        name: label.trim() || "Свой провайдер",
+        name: label.trim() || t("settings.providers.customDefaultName"),
       });
       await store.saveProvider(newId, { key: key.trim(), model: model.trim() });
       store.setLocalPreset(newId);
@@ -843,7 +886,7 @@ function ProviderDialog({ theme, dialog, onClose }: { theme: Theme; dialog: Dial
       return;
     }
     if (!key.trim()) {
-      setErr("Введите ключ API");
+      setErr(t("dialog.errNoKey"));
       return;
     }
     await store.saveProvider(id, { key: key.trim(), model: model.trim() || preset?.model || "" });
@@ -877,23 +920,23 @@ function ProviderDialog({ theme, dialog, onClose }: { theme: Theme; dialog: Dial
 
             <Text style={{ fontSize: 12.5, color: theme.muted, marginTop: 12, lineHeight: 18 }}>
               {custom
-                ? "Укажите адрес API, совместимого с OpenAI, и модель по умолчанию. Ключ можно оставить пустым, если провайдер его не требует."
+                ? t("dialog.customIntro")
                 : configure
-                  ? `Ключ и модель, которые OpenCode использует для ${name}.`
-                  : `Введите ключ API ${name}, чтобы подключить аккаунт и использовать модели ${name} в OpenCode.`}
+                  ? t("dialog.configureIntro", { name })
+                  : t("dialog.connectIntro", { name })}
             </Text>
 
             {custom ? (
               <>
-                <Text style={[s.dlgLabel, { color: theme.ink }]}>Название</Text>
+                <Text style={[s.dlgLabel, { color: theme.ink }]}>{t("dialog.name")}</Text>
                 <TextInput
                   value={label}
                   onChangeText={setLabel}
-                  placeholder="Мой провайдер"
+                  placeholder={t("dialog.namePlaceholder")}
                   placeholderTextColor={theme.faint}
                   style={[s.dlgInput, { color: theme.ink, borderColor: theme.bd, backgroundColor: theme.bg }]}
                 />
-                <Text style={[s.dlgLabel, { color: theme.ink }]}>Адрес (base URL)</Text>
+                <Text style={[s.dlgLabel, { color: theme.ink }]}>{t("dialog.baseUrl")}</Text>
                 <TextInput
                   value={url}
                   onChangeText={setUrl}
@@ -907,11 +950,11 @@ function ProviderDialog({ theme, dialog, onClose }: { theme: Theme; dialog: Dial
               </>
             ) : null}
 
-            <Text style={[s.dlgLabel, { color: theme.ink }]}>{custom ? "Ключ API" : `Ключ API ${name}`}</Text>
+            <Text style={[s.dlgLabel, { color: theme.ink }]}>{custom ? t("dialog.apiKey") : t("dialog.apiKeyOf", { name })}</Text>
             <TextInput
               value={key}
               onChangeText={setKey}
-              placeholder="Ключ API"
+              placeholder={t("dialog.apiKey")}
               placeholderTextColor={theme.faint}
               secureTextEntry
               autoCapitalize="none"
@@ -922,11 +965,11 @@ function ProviderDialog({ theme, dialog, onClose }: { theme: Theme; dialog: Dial
             {configure || custom ? (
               <>
                 <View style={s.dlgLabelRow}>
-                  <Text style={[s.dlgLabel, { color: theme.ink, marginTop: 0 }]}>Модель</Text>
+                  <Text style={[s.dlgLabel, { color: theme.ink, marginTop: 0 }]}>{t("dialog.model")}</Text>
                   {configure ? (
                     <Pressable onPress={fetchModels} hitSlop={8} disabled={!key.trim() || loading}>
                       <Text style={{ fontSize: 12, color: key.trim() ? theme.acc : theme.faint }}>
-                        {loading ? "Загрузка…" : "Загрузить список"}
+                        {loading ? t("common.loading") : t("dialog.loadList")}
                       </Text>
                     </Pressable>
                   ) : null}
@@ -963,7 +1006,7 @@ function ProviderDialog({ theme, dialog, onClose }: { theme: Theme; dialog: Dial
                     </View>
                   ) : (
                     <Text style={{ fontSize: 11.5, color: theme.warn, marginTop: 8 }}>
-                      Провайдер не отдал список моделей — введите идентификатор вручную.
+                      {t("dialog.noModelList")}
                     </Text>
                   )
                 ) : null}
@@ -975,7 +1018,7 @@ function ProviderDialog({ theme, dialog, onClose }: { theme: Theme; dialog: Dial
             <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginTop: 18 }}>
               <Pressable onPress={submit} style={({ pressed }) => [s.btn, { backgroundColor: pressed ? theme.l3 : theme.sndOn }]}>
                 <Text style={{ fontSize: 12.5, color: "#ffffff", fontWeight: "600" }}>
-                  {custom ? "Добавить" : configure ? "Сохранить" : "Продолжить"}
+                  {custom ? t("dialog.add") : configure ? t("common.save") : t("common.continue")}
                 </Text>
               </Pressable>
               {configure && !active ? (
@@ -987,7 +1030,7 @@ function ProviderDialog({ theme, dialog, onClose }: { theme: Theme; dialog: Dial
                   }}
                   style={({ pressed }) => [s.btn, s.btnGhost, { borderColor: theme.bd, backgroundColor: pressed ? theme.l2 : "transparent" }]}
                 >
-                  <Text style={{ fontSize: 12.5, color: theme.ink }}>Использовать</Text>
+                  <Text style={{ fontSize: 12.5, color: theme.ink }}>{t("dialog.use")}</Text>
                 </Pressable>
               ) : null}
             </View>
@@ -1005,14 +1048,14 @@ function ModelsSection({ theme }: { theme: Theme }) {
     <Card theme={theme}>
       <Row theme={theme}>
         <View style={s.rowText}>
-          <Text style={{ fontSize: 13.5, color: theme.ink, fontWeight: "600" }}>Выбранная модель</Text>
-          <Text style={{ fontSize: 12, color: theme.muted, marginTop: 2 }}>{cur?.name || "не выбрана"}</Text>
+          <Text style={{ fontSize: 13.5, color: theme.ink, fontWeight: "600" }}>{t("settings.models.selected")}</Text>
+          <Text style={{ fontSize: 12, color: theme.muted, marginTop: 2 }}>{cur?.name || t("settings.model.none")}</Text>
         </View>
         {cur ? <BrandIcon providerID={store.providerId || ""} size={18} color={theme.muted} /> : null}
       </Row>
       <Row theme={theme} last>
         <View style={s.rowText}>
-          <Text style={{ fontSize: 13.5, color: theme.ink, fontWeight: "600" }}>Размышления</Text>
+          <Text style={{ fontSize: 13.5, color: theme.ink, fontWeight: "600" }}>{t("settings.models.reasoning")}</Text>
           <Text style={{ fontSize: 12, color: theme.muted, marginTop: 2 }}>{variantName(store.variant)}</Text>
         </View>
       </Row>

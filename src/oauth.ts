@@ -1,4 +1,5 @@
 import * as AuthSession from "expo-auth-session";
+import { t } from "./i18n";
 import * as WebBrowser from "expo-web-browser";
 
 /**
@@ -55,7 +56,7 @@ function discovery(cloud: OAuthCloud): AuthSession.DiscoveryDocument {
 
 /** Opens the provider's sign-in page and exchanges the code for tokens. */
 export async function signIn(cloud: OAuthCloud, clientId: string): Promise<Tokens> {
-  if (!clientId) throw new Error("Не задан client ID — впишите его в настройках");
+  if (!clientId) throw new Error(t("oauth.noClientId"));
   const cfg = CONFIG[cloud];
   const redirect = redirectUri();
 
@@ -69,10 +70,10 @@ export async function signIn(cloud: OAuthCloud, clientId: string): Promise<Token
   });
 
   const result = await request.promptAsync(discovery(cloud));
-  if (result.type === "cancel" || result.type === "dismiss") throw new Error("Вход отменён");
-  if (result.type !== "success") throw new Error("Вход не удался");
+  if (result.type === "cancel" || result.type === "dismiss") throw new Error(t("oauth.cancelled"));
+  if (result.type !== "success") throw new Error(t("oauth.failed"));
   const code = result.params.code;
-  if (!code) throw new Error(result.params.error_description || result.params.error || "Провайдер не вернул код");
+  if (!code) throw new Error(result.params.error_description || result.params.error || t("oauth.noCode"));
 
   const token = await AuthSession.exchangeCodeAsync(
     {
@@ -84,7 +85,7 @@ export async function signIn(cloud: OAuthCloud, clientId: string): Promise<Token
     discovery(cloud),
   );
 
-  if (!token.accessToken) throw new Error("Провайдер не вернул токен доступа");
+  if (!token.accessToken) throw new Error(t("oauth.noToken"));
   return {
     access: token.accessToken,
     refresh: token.refreshToken || "",
@@ -95,7 +96,7 @@ export async function signIn(cloud: OAuthCloud, clientId: string): Promise<Token
 /** Trades the stored refresh token for a new access token. */
 export async function refresh(cloud: OAuthCloud, clientId: string, refreshToken: string): Promise<Tokens> {
   const token = await AuthSession.refreshAsync({ clientId, refreshToken }, discovery(cloud));
-  if (!token.accessToken) throw new Error("Не удалось обновить токен");
+  if (!token.accessToken) throw new Error(t("oauth.refreshFailed"));
   return {
     access: token.accessToken,
     refresh: token.refreshToken || refreshToken,

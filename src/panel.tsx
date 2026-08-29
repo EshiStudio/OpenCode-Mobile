@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { t } from "./i18n";
 import { Animated, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { Icon } from "./icons";
 import { Theme } from "./theme";
@@ -11,13 +12,13 @@ function baseName(dir?: string): string {
   return parts[parts.length - 1] || "";
 }
 
-function dayLabel(t: number): "Сегодня" | "Вчера" | "Ранее" {
-  const d = new Date(t);
+function dayLabel(when: number): string {
+  const d = new Date(when);
   const now = new Date();
   const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-  if (d.getTime() >= startOfToday) return "Сегодня";
-  if (d.getTime() >= startOfToday - 86400000) return "Вчера";
-  return "Ранее";
+  if (d.getTime() >= startOfToday) return t("common.today");
+  if (d.getTime() >= startOfToday - 86400000) return t("common.yesterday");
+  return t("common.earlier");
 }
 
 export function SessionsPanel({
@@ -53,7 +54,7 @@ export function SessionsPanel({
         id: l.id,
         title: l.title,
         time: { updated: l.when },
-        directory: "Устройство",
+        directory: t("chat.device"),
       } as SessionInfo));
     }
     const q = query.trim().toLowerCase();
@@ -86,7 +87,7 @@ export function SessionsPanel({
         ]}
       >
         <View style={[s.head, { paddingTop: 66 }]}>
-          <Text style={{ fontSize: 14, fontWeight: "600", color: theme.ink }}>Сессии</Text>
+          <Text style={{ fontSize: 14, fontWeight: "600", color: theme.ink }}>{t("sessions.title")}</Text>
           <Pressable onPress={onClose} hitSlop={10} style={({ pressed }) => [s.iconBtn, { backgroundColor: pressed ? theme.l2 : "transparent" }]}>
             <Icon name="close" size={14} color={theme.muted} />
           </Pressable>
@@ -98,7 +99,7 @@ export function SessionsPanel({
             <TextInput
               value={query}
               onChangeText={setQuery}
-              placeholder="Поиск сессий"
+              placeholder={t("sessions.search")}
               placeholderTextColor={theme.faint}
               style={{ flex: 1, marginLeft: 6, fontSize: 12.5, color: theme.ink }}
             />
@@ -106,7 +107,7 @@ export function SessionsPanel({
           <Pressable onPress={onNew} style={({ pressed }) => [s.newBtn, { backgroundColor: pressed ? theme.l2 : "transparent" }]}>
             <Icon name="new-session" size={13} color={theme.muted} />
             <Text style={{ fontSize: 12.5, color: theme.muted }} numberOfLines={1}>
-              Новая сессия
+              {t("chat.newSession")}
             </Text>
           </Pressable>
         </View>
@@ -117,7 +118,7 @@ export function SessionsPanel({
               <Text style={[s.section, { color: theme.faint }]}>{g.label}</Text>
               {g.items.map((ses) => {
                 const busy = !!store.statuses[ses.id] && (store.statuses[ses.id].type === "busy" || store.statuses[ses.id].type === "retry");
-                const proj = baseName(ses.directory) || "—";
+                const proj = baseName(ses.directory) || t("common.dash");
                 const on = store.activeId === ses.id;
                 return (
                   <Pressable
@@ -143,19 +144,19 @@ export function SessionsPanel({
                     </View>
                     <View style={{ flex: 1, minWidth: 0 }}>
                       <Text style={{ fontSize: 13.5, color: theme.ink }} numberOfLines={1}>
-                        {ses.title || "Новая сессия"}
+                        {ses.title || t("chat.newSession")}
                       </Text>
                       <View style={{ flexDirection: "row", alignItems: "center", gap: 5, marginTop: 2 }}>
                         <Text style={{ fontSize: 11, color: theme.faint }} numberOfLines={1}>
                           {proj}
                         </Text>
-                        {busy ? <Text style={{ fontSize: 11, color: theme.warn }}>· работает</Text> : null}
+                        {busy ? <Text style={{ fontSize: 11, color: theme.warn }}>· {t("common.running")}</Text> : null}
                       </View>
                     </View>
                     {confirm === ses.id ? (
                       <View style={{ flexDirection: "row", alignItems: "center", gap: 2 }}>
                         <Pressable
-                          accessibilityLabel="Подтвердить удаление"
+                          accessibilityLabel={t("sessions.confirmDelete")}
                           onPress={() => {
                             store.deleteSession(ses.id);
                             setConfirm(null);
@@ -163,7 +164,7 @@ export function SessionsPanel({
                           hitSlop={8}
                           style={{ paddingHorizontal: 6, paddingVertical: 4 }}
                         >
-                          <Text style={{ fontSize: 11.5, color: theme.err, fontWeight: "600" }}>Удалить</Text>
+                          <Text style={{ fontSize: 11.5, color: theme.err, fontWeight: "600" }}>{t("common.delete")}</Text>
                         </Pressable>
                         <Pressable onPress={() => setConfirm(null)} hitSlop={8} style={{ padding: 4 }}>
                           <Icon name="close" size={13} color={theme.faint} />
@@ -171,7 +172,7 @@ export function SessionsPanel({
                       </View>
                     ) : (
                       <Pressable
-                        accessibilityLabel="Удалить сессию"
+                        accessibilityLabel={t("sessions.delete")}
                         onPress={() => setConfirm(ses.id)}
                         hitSlop={10}
                         style={{ padding: 4 }}
@@ -186,7 +187,7 @@ export function SessionsPanel({
           ))}
           {groups.length === 0 ? (
             <Text style={{ textAlign: "center", color: theme.faint, fontSize: 12.5, padding: 26 }}>
-              {query ? "Ничего не найдено" : "Пока нет сессий"}
+              {query ? t("common.nothingFound") : t("sessions.empty")}
             </Text>
           ) : null}
         </ScrollView>
@@ -194,11 +195,11 @@ export function SessionsPanel({
         <View style={{ borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.bdSoft, paddingBottom: 26, paddingTop: 8 }}>
           <Pressable onPress={onSettings} style={({ pressed }) => [s.footRow, { backgroundColor: pressed ? theme.l2 : "transparent" }]}>
             <Icon name="settings-gear" size={15} color={theme.muted} />
-            <Text style={{ fontSize: 13, color: theme.muted, marginLeft: 8 }}>Настройки</Text>
+            <Text style={{ fontSize: 13, color: theme.muted, marginLeft: 8 }}>{t("sessions.settings")}</Text>
           </Pressable>
           <Pressable onPress={onHelp} style={({ pressed }) => [s.footRow, { backgroundColor: pressed ? theme.l2 : "transparent" }]}>
             <Icon name="terminal" size={15} color={theme.muted} />
-            <Text style={{ fontSize: 13, color: theme.muted, marginLeft: 8 }}>Помощь</Text>
+            <Text style={{ fontSize: 13, color: theme.muted, marginLeft: 8 }}>{t("sessions.help")}</Text>
           </Pressable>
         </View>
       </Animated.View>

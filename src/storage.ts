@@ -1,4 +1,5 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { Lang } from "./i18n";
 import * as SecureStore from "expo-secure-store";
 import { Connection } from "./api";
 
@@ -54,6 +55,18 @@ export async function loadTheme(): Promise<"light" | "dark" | null> {
 
 export async function saveTheme(t: "light" | "dark"): Promise<void> {
   await AsyncStorage.setItem(K_THEME, t);
+}
+
+const K_LANG = "ocm.lang";
+
+/** The interface language. Null means the user never chose one. */
+export async function loadLang(): Promise<Lang | null> {
+  const v = await AsyncStorage.getItem(K_LANG);
+  return v === "ru" ? "ru" : v === "en" ? "en" : null;
+}
+
+export async function saveLang(l: Lang): Promise<void> {
+  await AsyncStorage.setItem(K_LANG, l);
 }
 
 const K_CRASH = "ocm.crash";

@@ -1,4 +1,5 @@
 import { fetch as expoFetch } from "expo/fetch";
+import { has, t } from "./i18n";
 import { ProviderPreset } from "./storage";
 import { CATALOG } from "./catalog";
 import { AppSettings } from "./storage";
@@ -31,19 +32,6 @@ const FEATURED = [
   "cerebras",
 ];
 
-const DESCRIPTIONS: Record<string, string> = {
-  opencode: "Модели, отобранные командой opencode, по одному ключу",
-  openai: "Модели GPT для быстрых и мощных задач общего ИИ",
-  openrouter: "Доступ ко всем поддерживаемым моделям через одного провайдера",
-  deepseek: "Недорогие модели с сильным кодом и рассуждениями",
-  google: "Модели Gemini через OpenAI-совместимый эндпоинт",
-  groq: "Сверхбыстрый инференс открытых моделей",
-  "github-copilot": "ИИ-модели для помощи в кодировании через GitHub Copilot",
-  xai: "Модели Grok от xAI",
-  mistral: "Открытые и коммерческие модели Mistral",
-  cerebras: "Инференс на чипах Cerebras",
-};
-
 function host(url: string): string {
   return url.replace(/^https?:\/\//, "").replace(/\/+$/, "");
 }
@@ -56,7 +44,7 @@ function fromCatalog(id: string): ProviderPreset | undefined {
     name: e.name,
     baseURL: e.api,
     model: e.models[0] || "",
-    desc: DESCRIPTIONS[id] || `${e.models.length} ${e.models.length === 1 ? "модель" : "моделей"} · ${host(e.api)}`,
+    desc: "",
   };
 }
 
@@ -77,6 +65,18 @@ export const BUILTIN_IDS = ALL_PRESETS.map((p) => p.id);
 /** Model ids the registry knows for a provider, used before /models answers. */
 export function catalogModels(id: string): string[] {
   return CATALOG[id]?.models || [];
+}
+
+/**
+ * The one-line pitch under a provider name. Resolved on call rather than stored,
+ * because the presets are built at import time, before the language is loaded.
+ */
+export function presetDesc(p: ProviderPreset): string {
+  const key = "provider.desc." + p.id;
+  if (has(key)) return t(key);
+  const e = CATALOG[p.id];
+  if (e) return t("provider.desc.generic", { count: e.models.length, host: host(e.api) });
+  return p.desc || "";
 }
 
 /** Display name for a preset, whichever field it was stored under. */
@@ -103,19 +103,15 @@ export function findPreset(custom: ProviderPreset[], id: string): ProviderPreset
  * question. Earlier turns may claim a provider or the disk is missing; recency wins.
  */
 export function capabilityNote(settings: AppSettings, yandexToken: boolean): string {
-  const local = settings.localWork ? "локальная работа ВКЛЮЧЕНА" : "локальная работа выключена";
-  const disk = yandexToken ? "Яндекс Диск ПОДКЛЮЧЕН" : "Яндекс Диск не подключен";
-  return `Актуальное состояние на сейчас: ${local}, ${disk}. Игнорируйте более ранние утверждения об обратном в этом диалоге.`;
+  const local = t(settings.localWork ? "ai.state.localOn" : "ai.state.localOff");
+  const disk = t(yandexToken ? "ai.state.diskOn" : "ai.state.diskOff");
+  return t("ai.state.now", { local, disk });
 }
 
 export function systemPrompt(settings: AppSettings, yandexToken: boolean): string {
-  const local = settings.localWork
-    ? "У вас включена локальная работа. Используйте инструменты write_file, make_dir, list_dir, read_file, delete_path для работы с файлами в рабочей папке приложения на устройстве. Пути указывайте относительными, например notes/todo.md. Файл по ссылке скачивает download_url, а save_to_device отдаёт готовый файл в память телефона — папку выбирает сам пользователь."
-    : "Локальная работа выключена: вы НЕ можете создавать файлы или папки на устройстве. Если пользователь просит создать, сохранить или скопировать что-то локально — ответьте, что функция локальной работы отключена и попросите подключить Веб-диск (Яндекс Диск) в настройках приложения.";
-  const disk = yandexToken
-    ? "Яндекс Диск подключен: используйте disk_write_file, disk_make_dir, disk_list, disk_read_file. Рабочая папка на диске — opencode, пути указывайте относительно неё."
-    : "Яндекс Диск не подключен: сохранение в облако недоступно, предложите подключить его в настройках.";
-  return "Вы — ассистент мобильного приложения OpenCode. Отвечайте кратко и по делу. У вас есть доступ в интернет: web_search для поиска и fetch_url для загрузки страницы. Вы также можете настраивать само приложение: app_status показывает, что подключено, app_connect_cloud подключает облако по токену пользователя, app_set_provider_key сохраняет ключ провайдера, app_use_model переключает модель, app_set_setting меняет переключатели. Если пользователь прислал токен или ключ — примените его сами через эти инструменты и подтвердите результат. " + local + " " + disk;
+  const local = t(settings.localWork ? "ai.prompt.localOn" : "ai.prompt.localOff");
+  const disk = t(yandexToken ? "ai.prompt.diskOn" : "ai.prompt.diskOff");
+  return t("ai.prompt.base") + local + " " + disk;
 }
 
 export class LocalAIError extends Error {
@@ -163,7 +159,7 @@ export async function streamChat(
     });
   } catch (e) {
     if (e instanceof Error && e.name === "AbortError") throw e;
-    throw new LocalAIError(0, "Не удалось достучаться до провайдера (сеть/URL)");
+    throw new LocalAIError(0, t("ai.unreachable"));
   }
 
   if (!res.ok || !res.body) {
@@ -173,8 +169,8 @@ export async function streamChat(
     } catch {
       // ignore
     }
-    if (res.status === 401 || res.status === 403) throw new LocalAIError(res.status, "Ключ API отклонён провайдером (401/403)");
-    throw new LocalAIError(res.status, "Ошибка провайдера: " + (body.slice(0, 180) || res.status));
+    if (res.status === 401 || res.status === 403) throw new LocalAIError(res.status, t("ai.keyRejected"));
+    throw new LocalAIError(res.status, t("ai.providerError", { detail: body.slice(0, 180) || res.status }));
   }
 
   const reader = res.body.getReader();

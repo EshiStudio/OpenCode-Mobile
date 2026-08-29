@@ -1,4 +1,5 @@
 import { fetch as expoFetch } from "expo/fetch";
+import { t } from "./i18n";
 import {
   MsgInfo,
   PermissionRequest,
@@ -57,16 +58,16 @@ export class Api {
       });
     } catch (e) {
       if (e instanceof Error && e.name === "AbortError") {
-        throw new ApiError(0, "Сервер не отвечает (таймаут 10 с). Проверьте адрес и что сервер запущен.");
+        throw new ApiError(0, t("api.timeout"));
       }
-      throw new ApiError(0, "Сервер недоступен: " + (e instanceof Error ? e.message : "ошибка сети"));
+      throw new ApiError(0, t("api.unreachable", { reason: e instanceof Error ? e.message : t("api.networkError") }));
     } finally {
       clearTimeout(timer);
     }
-    if (res.status === 401) throw new ApiError(401, "Сервер отклонил авторизацию (логин/пароль)");
+    if (res.status === 401) throw new ApiError(401, t("api.unauthorized"));
     if (!res.ok) {
       const body = await res.text().catch(() => "");
-      throw new ApiError(res.status, body.slice(0, 300) || `Ошибка сервера (${res.status})`);
+      throw new ApiError(res.status, body.slice(0, 300) || t("api.serverError", { status: res.status }));
     }
     const text = await res.text().catch(() => "null");
     if (!text) return undefined as unknown as T;

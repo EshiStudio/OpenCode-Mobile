@@ -1,4 +1,5 @@
 import { fetch as expoFetch } from "expo/fetch";
+import { t } from "./i18n";
 
 /**
  * Google Drive v3 client.
@@ -31,13 +32,13 @@ async function call(token: string, url: string, init?: { method?: string; body?:
       body: init?.body,
     });
   } catch {
-    throw new DriveError(0, "Нет связи с Google Drive");
+    throw new DriveError(0, t("disk.gdrive.noNetwork"));
   }
 }
 
 async function fail(res: Response, fallback: string): Promise<never> {
-  if (res.status === 401) throw new DriveError(401, "Токен Google отклонён (401): неверный или истёк");
-  if (res.status === 403) throw new DriveError(403, "Google отклонил запрос (403): не выдана область drive.file");
+  if (res.status === 401) throw new DriveError(401, t("disk.gdrive.tokenRejected"));
+  if (res.status === 403) throw new DriveError(403, t("disk.gdrive.forbidden"));
   let detail = fallback;
   try {
     const j = await res.json();
@@ -54,7 +55,7 @@ function segments(rel: string): string[] {
     .split("/")
     .map((p) => p.trim())
     .filter((p) => p && p !== ".");
-  if (parts.some((p) => p === "..")) throw new DriveError(0, "путь не должен содержать ..");
+  if (parts.some((p) => p === "..")) throw new DriveError(0, t("tool.err.dotdot"));
   return parts;
 }
 
@@ -66,7 +67,7 @@ async function findChild(token: string, parent: string, name: string, folderOnly
     ...(folderOnly ? [`mimeType='${FOLDER_MIME}'`] : []),
   ].join(" and ");
   const res = await call(token, `${API}/files?q=${encodeURIComponent(q)}&fields=files(id,name)&pageSize=1`);
-  if (!res.ok) await fail(res, "Поиск в Drive не удался");
+  if (!res.ok) await fail(res, t("disk.gdrive.searchFailed"));
   const j = await res.json();
   return j?.files?.[0]?.id || null;
 }
@@ -76,7 +77,7 @@ async function createFolder(token: string, parent: string, name: string): Promis
     method: "POST",
     body: JSON.stringify({ name, mimeType: FOLDER_MIME, parents: [parent] }),
   });
-  if (!res.ok) await fail(res, "Не удалось создать папку в Drive");
+  if (!res.ok) await fail(res, t("disk.gdrive.mkdirFailed"));
   const j = await res.json();
   return j.id as string;
 }
@@ -87,7 +88,7 @@ async function folderId(token: string, rel: string, create: boolean): Promise<st
   for (const name of [ROOT, ...segments(rel)]) {
     let id = await findChild(token, parent, name, true);
     if (!id) {
-      if (!create) throw new DriveError(404, "Папки нет: " + name);
+      if (!create) throw new DriveError(404, t("disk.gdrive.noFolder", { name }));
       id = await createFolder(token, parent, name);
     }
     parent = id;
@@ -108,7 +109,7 @@ export async function listFolder(token: string, rel: string): Promise<string[]> 
   const id = await folderId(token, rel, false);
   const q = `'${id}' in parents and trashed=false`;
   const res = await call(token, `${API}/files?q=${encodeURIComponent(q)}&fields=files(name,mimeType)&pageSize=200`);
-  if (!res.ok) await fail(res, "Не удалось прочитать папку");
+  if (!res.ok) await fail(res, t("disk.gdrive.readFolderFailed"));
   const j = await res.json();
   const files: Array<{ name: string; mimeType: string }> = j?.files || [];
   return files.map((f) => (f.mimeType === FOLDER_MIME ? f.name + "/" : f.name));
@@ -117,7 +118,7 @@ export async function listFolder(token: string, rel: string): Promise<string[]> 
 function split(rel: string): { dir: string; name: string } {
   const parts = segments(rel);
   const name = parts.pop() || "";
-  if (!name) throw new DriveError(0, "не указано имя файла");
+  if (!name) throw new DriveError(0, t("tool.err.noName"));
   return { dir: parts.join("/"), name };
 }
 
@@ -143,16 +144,16 @@ export async function uploadText(token: string, rel: string, content: string): P
     body,
     type: `multipart/related; boundary=${boundary}`,
   });
-  if (!res.ok) await fail(res, "Загрузка в Drive отклонена");
+  if (!res.ok) await fail(res, t("disk.gdrive.uploadRejected"));
 }
 
 export async function downloadText(token: string, rel: string): Promise<string> {
   const { dir, name } = split(rel);
   const parent = await folderId(token, dir, false);
   const id = await findChild(token, parent, name, false);
-  if (!id) throw new DriveError(404, "Файла нет: " + rel);
+  if (!id) throw new DriveError(404, t("disk.gdrive.noFile", { path: rel }));
   const res = await call(token, `${API}/files/${id}?alt=media`);
-  if (!res.ok) await fail(res, "Не удалось прочитать файл");
+  if (!res.ok) await fail(res, t("disk.gdrive.readFileFailed"));
   return await res.text();
 }
 
@@ -160,7 +161,7 @@ export async function deletePath(token: string, rel: string): Promise<void> {
   const { dir, name } = split(rel);
   const parent = await folderId(token, dir, false);
   const id = await findChild(token, parent, name, false);
-  if (!id) throw new DriveError(404, "Ничего нет по пути: " + rel);
+  if (!id) throw new DriveError(404, t("disk.gdrive.nothingAt", { path: rel }));
   const res = await call(token, `${API}/files/${id}`, { method: "DELETE" });
-  if (!res.ok) await fail(res, "Не удалось удалить");
+  if (!res.ok) await fail(res, t("disk.gdrive.deleteFailed"));
 }

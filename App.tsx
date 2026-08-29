@@ -5,6 +5,7 @@ import { SafeAreaProvider, useSafeAreaInsets } from "react-native-safe-area-cont
 import { Connection } from "./src/api";
 import { StoreProvider, useStore } from "./src/store";
 import { makeTheme } from "./src/theme";
+import { Lang, setLocale, t } from "./src/i18n";
 import { ChatScreen } from "./src/chat";
 import {
   loadConnection,
@@ -13,6 +14,8 @@ import {
   saveConnection,
   loadTheme,
   saveTheme,
+  loadLang,
+  saveLang,
   saveCrash,
   loadCrash,
   clearCrash,
@@ -71,7 +74,7 @@ class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { err
       return (
         <SafeAreaProvider>
           <View style={{ flex: 1, backgroundColor: "#0c0c0c", padding: 24, justifyContent: "center" }}>
-            <Text style={{ color: "#f0f0f0", fontSize: 16, fontWeight: "600", marginBottom: 10 }}>Ошибка приложения</Text>
+            <Text style={{ color: "#f0f0f0", fontSize: 16, fontWeight: "600", marginBottom: 10 }}>{t("app.error.title")}</Text>
             <Text style={{ color: "#f1484f", fontSize: 12.5, fontFamily: "monospace", marginBottom: 8 }}>
               {String(this.state.err?.message || this.state.err)}
             </Text>
@@ -82,7 +85,7 @@ class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { err
               style={{ marginTop: 16, padding: 10, borderRadius: 8, backgroundColor: "#242424", alignItems: "center" }}
               onPress={() => this.setState({ err: null })}
             >
-              <Text style={{ color: "#f0f0f0", fontSize: 14 }}>Продолжить</Text>
+              <Text style={{ color: "#f0f0f0", fontSize: 14 }}>{t("common.continue")}</Text>
             </Pressable>
           </View>
         </SafeAreaProvider>
@@ -95,6 +98,7 @@ class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { err
 export default function App() {
   const [conn, setConn] = useState<Connection | null>(null);
   const [dark, setDark] = useState(false);
+  const [lang, setLangState] = useState<Lang>("en");
   const [ready, setReady] = useState(false);
   const [crash, setCrash] = useState<CrashReport | null>(null);
 
@@ -105,8 +109,14 @@ export default function App() {
         if (report && Date.now() - report.when < 1000 * 60 * 60 * 24) setCrash(report);
         const c = await loadConnection();
         if (c) setConn(c);
-        const t = await loadTheme();
-        if (t) setDark(t === "dark");
+        const savedTheme = await loadTheme();
+        if (savedTheme) setDark(savedTheme === "dark");
+        // The locale must be set before the first render: plain functions read it.
+        const savedLang = await loadLang();
+        if (savedLang) {
+          setLocale(savedLang);
+          setLangState(savedLang);
+        }
       } finally {
         setReady(true);
       }
@@ -122,6 +132,12 @@ export default function App() {
   const setThemeDark = useCallback((d: boolean) => {
     setDark(d);
     saveTheme(d ? "dark" : "light");
+  }, []);
+
+  const setLang = useCallback((l: Lang) => {
+    setLocale(l);
+    setLangState(l);
+    saveLang(l);
   }, []);
 
   if (!ready) {
@@ -151,7 +167,14 @@ export default function App() {
       <ErrorBoundary>
         <DeviceFrame theme={theme}>
           <StoreProvider conn={conn ?? null} onConnectionFailure={handleConnectionFailure}>
-            <ConnectedShell theme={theme} dark={dark} setDark={setThemeDark} onDisconnect={() => setConn(null)} />
+            <ConnectedShell
+              theme={theme}
+              dark={dark}
+              setDark={setThemeDark}
+              lang={lang}
+              setLang={setLang}
+              onDisconnect={() => setConn(null)}
+            />
           </StoreProvider>
         </DeviceFrame>
       </ErrorBoundary>
@@ -170,9 +193,9 @@ function CrashReportScreen({
 }) {
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg, padding: 24, justifyContent: "center", gap: 12 }}>
-      <Text style={{ color: theme.ink, fontSize: 18, fontWeight: "600" }}>Приложение упало.</Text>
+      <Text style={{ color: theme.ink, fontSize: 18, fontWeight: "600" }}>{t("app.crash.title")}</Text>
       <Text style={{ color: theme.faint, fontSize: 12.5 }}>
-        {report.fatal ? "Процесс был прерван" : "Ошибка произошла, но поймана"} · {new Date(report.when).toISOString().slice(0, 19).replace("T", " ")}
+        {t(report.fatal ? "app.crash.fatal" : "app.crash.caught")} · {new Date(report.when).toISOString().slice(0, 19).replace("T", " ")}
       </Text>
       <Text selectable style={{ color: theme.err, fontSize: 13, fontFamily: "monospace" }}>
         {report.message}
@@ -184,7 +207,7 @@ function CrashReportScreen({
         onPress={onDismiss}
         style={{ marginTop: 10, height: 44, borderRadius: 9, alignItems: "center", justifyContent: "center", backgroundColor: theme.sndOn }}
       >
-        <Text style={{ color: "#fff", fontSize: 14.5, fontWeight: "600" }}>Продолжить</Text>
+        <Text style={{ color: "#fff", fontSize: 14.5, fontWeight: "600" }}>{t("common.continue")}</Text>
       </Pressable>
     </View>
   );
@@ -218,18 +241,22 @@ function ConnectedShell({
   theme,
   dark,
   setDark,
+  lang,
+  setLang,
   onDisconnect,
 }: {
   theme: ReturnType<typeof makeTheme>;
   dark: boolean;
   setDark: (d: boolean) => void;
+  lang: Lang;
+  setLang: (l: Lang) => void;
   onDisconnect: () => void;
 }) {
   const store = useStore();
   const insets = useSafeAreaInsets();
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg, paddingTop: insets.top }}>
-      <ChatScreen theme={theme} dark={dark} setDark={setDark} />
+      <ChatScreen theme={theme} dark={dark} setDark={setDark} lang={lang} setLang={setLang} />
     </View>
   );
 }
@@ -238,20 +265,20 @@ function ConnectingView({ theme, error, retry, onDisconnect }: { theme: ReturnTy
   return (
     <View style={{ flex: 1, alignItems: "center", justifyContent: "center", gap: 18, padding: 30 }}>
       <ActivityIndicator color={theme.faint} />
-      <Text style={{ fontSize: 14, color: theme.muted, textAlign: "center" as const }}>{error || "Подключение…"}</Text>
+      <Text style={{ fontSize: 14, color: theme.muted, textAlign: "center" as const }}>{error || t("app.connecting")}</Text>
       {error ? (
         <Pressable
           style={{ paddingHorizontal: 18, paddingVertical: 10, borderRadius: 8, backgroundColor: theme.l2, borderWidth: 1, borderColor: theme.bd }}
           onPress={retry as never}
         >
-          <Text style={{ color: theme.ink, fontSize: 13.5 }}>Повторить</Text>
+          <Text style={{ color: theme.ink, fontSize: 13.5 }}>{t("common.retry")}</Text>
         </Pressable>
       ) : null}
       <Pressable
         style={{ paddingHorizontal: 18, paddingVertical: 10, borderRadius: 8, backgroundColor: theme.l2, borderWidth: 1, borderColor: theme.bd }}
         onPress={onDisconnect}
       >
-        <Text style={{ color: theme.ink, fontSize: 13.5 }}>Сменить сервер</Text>
+        <Text style={{ color: theme.ink, fontSize: 13.5 }}>{t("app.changeServer")}</Text>
       </Pressable>
     </View>
   );
@@ -288,7 +315,7 @@ function ConnectScreen({
 
   const connect = async () => {
     if (!host.trim()) {
-      setError("Введите адрес сервера");
+      setError(t("app.connect.enterHost"));
       return;
     }
     setBusy(true);
@@ -305,7 +332,7 @@ function ConnectScreen({
       await saveConnection(c);
       onConnected(c);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Не удалось подключиться");
+      setError(e instanceof Error ? e.message : t("app.connect.failed"));
     } finally {
       setBusy(false);
     }
@@ -317,15 +344,15 @@ function ConnectScreen({
         <View style={{ width: "100%", maxWidth: 460, gap: 14 }}>
           <Text style={{ fontSize: 24, fontWeight: "600", letterSpacing: -0.6, color: theme.ink }}>OpenCode Mobile</Text>
           <Text style={{ fontSize: 13, color: theme.faint, lineHeight: 19 }}>
-            Подключитесь к серверу opencode на вашем ПК. Запустите на ПК:
+            {t("app.connect.intro")}
           </Text>
           <Text style={{ fontFamily: "monospace", fontSize: 11.5, color: theme.muted, backgroundColor: theme.l1, padding: 10, borderRadius: 7 }}>
             opencode serve --hostname 0.0.0.0 --port 41111
           </Text>
 
-          <Field theme={theme} label="Адрес сервера" value={host} onChange={setHost} placeholder="http://192.168.1.20:41111" autoCapitalize="none" />
-          <Field theme={theme} label="Пользователь" value={username} onChange={setUsername} placeholder="opencode" autoCapitalize="none" />
-          <Field theme={theme} label="Пароль (OPENCODE_SERVER_PASSWORD)" value={password} onChange={setPassword} placeholder="••••••••" secure />
+          <Field theme={theme} label={t("app.connect.host")} value={host} onChange={setHost} placeholder="http://192.168.1.20:41111" autoCapitalize="none" />
+          <Field theme={theme} label={t("app.connect.user")} value={username} onChange={setUsername} placeholder="opencode" autoCapitalize="none" />
+          <Field theme={theme} label={t("app.connect.password")} value={password} onChange={setPassword} placeholder="••••••••" secure />
 
           {error ? <Text style={{ fontSize: 12.5, color: theme.err }}>{error}</Text> : null}
 
@@ -341,12 +368,12 @@ function ConnectScreen({
               marginTop: 4,
             }}
           >
-            {busy ? <ActivityIndicator color="#ffffff" /> : <Text style={{ color: "#fff", fontSize: 14.5, fontWeight: "600" }}>Подключиться</Text>}
+            {busy ? <ActivityIndicator color="#ffffff" /> : <Text style={{ color: "#fff", fontSize: 14.5, fontWeight: "600" }}>{t("app.connect.action")}</Text>}
           </Pressable>
 
           <Pressable onPress={() => setDark(!dark)} style={{ marginTop: 6, alignItems: "center" }}>
             <Text style={{ color: theme.faint, fontSize: 13 }}>
-              Тема: {dark ? "тёмная" : "светлая"} · переключить
+              {t("app.theme.toggle", { name: t(dark ? "app.theme.dark" : "app.theme.light") })}
             </Text>
           </Pressable>
         </View>

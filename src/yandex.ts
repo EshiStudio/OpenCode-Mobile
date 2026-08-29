@@ -1,4 +1,5 @@
 import { fetch as expoFetch } from "expo/fetch";
+import { t } from "./i18n";
 
 /**
  * Yandex Disk REST client.
@@ -40,7 +41,7 @@ async function call(token: string, path: string, init?: { method?: string; body?
       body: init?.body,
     });
   } catch {
-    throw new DiskError(0, "Нет связи с Яндекс Диском");
+    throw new DiskError(0, t("disk.yandex.noNetwork"));
   }
   return res;
 }
@@ -58,9 +59,9 @@ async function message(res: Response, fallback: string): Promise<string> {
 export async function ensureFolder(token: string, path: string): Promise<void> {
   const res = await call(token, "/resources?path=" + encodeURIComponent(path), { method: "PUT" });
   if (res.ok || res.status === 409) return;
-  if (res.status === 401) throw new DiskError(401, "Токен отклонён (401): он неверный или истёк. Выпустите новый.");
-  if (res.status === 403) throw new DiskError(403, await message(res, "Недостаточно прав (403)"));
-  throw new DiskError(res.status, await message(res, "Не удалось создать папку " + path));
+  if (res.status === 401) throw new DiskError(401, t("disk.yandex.tokenRejected"));
+  if (res.status === 403) throw new DiskError(403, await message(res, t("disk.yandex.forbidden")));
+  throw new DiskError(res.status, await message(res, t("disk.yandex.mkdirFailed", { path })));
 }
 
 /**
@@ -89,14 +90,14 @@ function full(rel: string, root: string = DISK_ROOT): string {
     .map((p) => p.trim())
     .filter((p) => p && p !== ".")
     .join("/");
-  if (clean.includes("..")) throw new DiskError(0, "путь не должен содержать ..");
+  if (clean.includes("..")) throw new DiskError(0, t("tool.err.dotdot"));
   return clean ? root + "/" + clean : root;
 }
 
 export async function listFolder(token: string, rel: string, root?: string): Promise<string[]> {
   const res = await call(token, "/resources?limit=200&path=" + encodeURIComponent(full(rel, root)));
-  if (res.status === 404) throw new DiskError(404, "Папки нет: " + (rel || "/"));
-  if (!res.ok) throw new DiskError(res.status, await message(res, "Ошибка чтения папки"));
+  if (res.status === 404) throw new DiskError(404, t("disk.yandex.noFolder", { path: rel || "/" }));
+  if (!res.ok) throw new DiskError(res.status, await message(res, t("disk.yandex.readFolderFailed")));
   const j = await res.json();
   const items = j?._embedded?.items || [];
   return items.map((it: { name: string; type: string }) => (it.type === "dir" ? it.name + "/" : it.name));
@@ -105,25 +106,25 @@ export async function listFolder(token: string, rel: string, root?: string): Pro
 export async function uploadText(token: string, rel: string, content: string, root?: string): Promise<void> {
   const path = full(rel, root);
   const res = await call(token, "/resources/upload?overwrite=true&path=" + encodeURIComponent(path));
-  if (!res.ok) throw new DiskError(res.status, await message(res, "Не удалось получить ссылку на загрузку"));
+  if (!res.ok) throw new DiskError(res.status, await message(res, t("disk.yandex.noUploadLink")));
   const { href } = await res.json();
-  if (!href) throw new DiskError(0, "Яндекс не вернул ссылку на загрузку");
+  if (!href) throw new DiskError(0, t("disk.yandex.noLink"));
   let put: Response;
   try {
     put = await expoFetch(href, { method: "PUT", body: content });
   } catch {
-    throw new DiskError(0, "Загрузка прервалась");
+    throw new DiskError(0, t("disk.yandex.uploadAborted"));
   }
-  if (!put.ok) throw new DiskError(put.status, "Загрузка отклонена (" + put.status + ")");
+  if (!put.ok) throw new DiskError(put.status, t("disk.yandex.uploadRejected", { status: put.status }));
 }
 
 export async function downloadText(token: string, rel: string, root?: string): Promise<string> {
   const res = await call(token, "/resources/download?path=" + encodeURIComponent(full(rel, root)));
-  if (res.status === 404) throw new DiskError(404, "Файла нет: " + rel);
-  if (!res.ok) throw new DiskError(res.status, await message(res, "Не удалось получить ссылку на скачивание"));
+  if (res.status === 404) throw new DiskError(404, t("disk.yandex.noFile", { path: rel }));
+  if (!res.ok) throw new DiskError(res.status, await message(res, t("disk.yandex.noDownloadLink")));
   const { href } = await res.json();
   const file = await expoFetch(href);
-  if (!file.ok) throw new DiskError(file.status, "Скачивание отклонено (" + file.status + ")");
+  if (!file.ok) throw new DiskError(file.status, t("disk.yandex.downloadRejected", { status: file.status }));
   return await file.text();
 }
 
@@ -144,6 +145,6 @@ export async function deletePath(token: string, rel: string, root?: string): Pro
     method: "DELETE",
   });
   if (res.ok || res.status === 202 || res.status === 204) return;
-  if (res.status === 404) throw new DiskError(404, "Ничего нет по пути: " + rel);
-  throw new DiskError(res.status, await message(res, "Не удалось удалить"));
+  if (res.status === 404) throw new DiskError(404, t("disk.yandex.nothingAt", { path: rel }));
+  throw new DiskError(res.status, await message(res, t("disk.yandex.deleteFailed")));
 }

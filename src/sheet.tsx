@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { t } from "./i18n";
 import {
   Animated,
   Pressable,
@@ -77,7 +78,7 @@ export function RowList({
   onPick,
   searchable,
   searchPlaceholder,
-  emptyText = "Ничего не найдено",
+  emptyText = t("common.nothingFound"),
   footer,
 }: {
   theme: Theme;
@@ -159,7 +160,7 @@ export function RowList({
             autoFocus={false}
             value={q}
             onChangeText={setQ}
-            placeholder={searchPlaceholder || "Поиск"}
+            placeholder={searchPlaceholder || t("common.search")}
             placeholderTextColor={theme.faint}
             style={{ flex: 1, color: theme.ink, fontSize: 13.5, marginLeft: 6 }}
           />

@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { t } from "./i18n";
 import { Alert, Animated, Linking, Pressable, StyleSheet, Text, View } from "react-native";
 import { Icon, IconName } from "./icons";
 import { downloadToDevice } from "./media";
@@ -12,15 +13,15 @@ const CHUNKS = /(`[^`]*`|https?:\/\/[^\s<>()"']+)/;
 /** Offers what a link is good for: opening it, or putting the file on the phone. */
 export function linkActions(url: string) {
   Alert.alert(url.length > 60 ? url.slice(0, 60) + "…" : url, undefined, [
-    { text: "Открыть", onPress: () => Linking.openURL(url).catch(() => {}) },
+    { text: t("common.open"), onPress: () => Linking.openURL(url).catch(() => {}) },
     {
-      text: "Скачать",
+      text: t("common.download"),
       onPress: async () => {
         const res = await downloadToDevice(url);
-        Alert.alert(res.saved ? "Файл сохранён" : "Не сохранено", res.saved ? undefined : res.reason);
+        Alert.alert(res.saved ? t("message.saved") : t("message.notSaved"), res.saved ? undefined : res.reason);
       },
     },
-    { text: "Отмена", style: "cancel" },
+    { text: t("common.cancel"), style: "cancel" },
   ]);
 }
 
@@ -86,7 +87,7 @@ export function ToolChip({ theme, part, collapsed }: { theme: Theme; part: Extra
           {part.tool}
         </Text>
         <Text style={{ fontSize: 11.5, color: err ? theme.err : theme.faint, marginTop: 1 }} numberOfLines={collapsed ? 1 : 4}>
-          {err ? String(st.error || "ошибка") : name}
+          {err ? String(st.error || t("message.error")) : name}
         </Text>
       </View>
       <Icon name="chevron-down" size={12} color={theme.faint} />
@@ -100,7 +101,7 @@ export function ReasoningBlock({ theme, text }: { theme: Theme; text: string }) 
     <Pressable onPress={() => setOpen(!open)} style={{ flexDirection: "row", alignItems: "center", gap: 8, marginVertical: 12 }}>
       <Icon name="brain" size={14} color={theme.faint} />
       <Text style={{ fontSize: 12, color: theme.faint }}>
-        {open ? text : `Размышление· ${text.length > 32 ? text.slice(0, 32) + "…" : text}`}
+        {open ? text : t("message.thinking", { text: text.length > 32 ? text.slice(0, 32) + "…" : text })}
       </Text>
       <Icon name={open ? "chevron-down" : "chevron-down"} size={12} color={theme.faint} />
     </Pressable>
@@ -191,7 +192,9 @@ export function MessageView({
       {retry && (
         <View style={{ marginVertical: 8 }}>
           <Text style={{ color: theme.warn, fontSize: 12 }}>
-            Повтор попытки {retry instanceof Object && "attempt" in retry ? String((retry as { attempt: number }).attempt) : ""}
+            {t("message.retry", {
+              attempt: retry instanceof Object && "attempt" in retry ? String((retry as { attempt: number }).attempt) : "",
+            })}
           </Text>
         </View>
       )}

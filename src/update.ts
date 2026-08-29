@@ -1,4 +1,5 @@
 import { fetch as expoFetch } from "expo/fetch";
+import { t } from "./i18n";
 
 /**
  * Update check against GitHub Releases.
@@ -10,7 +11,7 @@ import { fetch as expoFetch } from "expo/fetch";
  */
 
 /** Version of this build. Kept in step with `version` in app.json. */
-export const APP_VERSION = "1.2.0";
+export const APP_VERSION = "1.3.0";
 
 export type Release = {
   version: string;
@@ -50,7 +51,7 @@ export function normalizeRepo(input: string): string {
 
 export async function fetchLatest(repoInput: string): Promise<Release> {
   const repo = normalizeRepo(repoInput);
-  if (!repo) throw new Error("Укажите репозиторий в виде owner/repo");
+  if (!repo) throw new Error(t("update.needRepo"));
 
   let res: Response;
   try {
@@ -58,11 +59,11 @@ export async function fetchLatest(repoInput: string): Promise<Release> {
       headers: { Accept: "application/vnd.github+json" },
     });
   } catch {
-    throw new Error("Нет связи с GitHub");
+    throw new Error(t("update.noNetwork"));
   }
-  if (res.status === 404) throw new Error("Релизов нет или репозиторий закрыт");
-  if (res.status === 403) throw new Error("GitHub временно ограничил запросы, попробуйте позже");
-  if (!res.ok) throw new Error("GitHub ответил ошибкой " + res.status);
+  if (res.status === 404) throw new Error(t("update.noReleases"));
+  if (res.status === 403) throw new Error(t("update.rateLimited"));
+  if (!res.ok) throw new Error(t("update.httpError", { status: res.status }));
 
   const j = await res.json();
   const assets: Array<{ name: string; browser_download_url: string }> = j?.assets || [];
@@ -79,6 +80,6 @@ export async function fetchLatest(repoInput: string): Promise<Release> {
 /** Returns the release when it is newer than this build, otherwise null. */
 export async function checkForUpdate(repo: string): Promise<Release | null> {
   const rel = await fetchLatest(repo);
-  if (!rel.version) throw new Error("У релиза нет тега версии");
+  if (!rel.version) throw new Error(t("update.noTag"));
   return isNewer(rel.version, APP_VERSION) ? rel : null;
 }
