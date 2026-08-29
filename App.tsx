@@ -7,7 +7,7 @@ import { StoreProvider, useStore } from "./src/store";
 import { makeTheme } from "./src/theme";
 import { Lang, setLocale, t } from "./src/i18n";
 import { ChatScreen } from "./src/chat";
-import { UpdateOverlay } from "./src/update";
+import { UpdateOverlay } from "./src/update-overlay";
 import {
   loadConnection,
   loadSaved,
