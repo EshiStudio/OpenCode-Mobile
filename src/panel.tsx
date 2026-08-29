@@ -5,6 +5,7 @@ import { Icon } from "./icons";
 import { Theme } from "./theme";
 import { useStore } from "./store";
 import { SessionInfo } from "./types";
+import { CLOUD_IDS, cloudName } from "./clouds";
 import { useDrawerSwipe } from "./swipe";
 
 function baseName(dir?: string): string {
@@ -27,19 +28,207 @@ function dayLabel(when: number): string {
  * ones this device started; on-device sessions live somewhere else entirely.
  * Shared so the panel and the title's quick-pick can never drift apart.
  */
-export function visibleSessions(store: ReturnType<typeof useStore>): SessionInfo[] {
+export function visibleSessions(store: ReturnType<typeof useStore>, projectID?: string): SessionInfo[] {
+  const scope = projectID === undefined ? store.local.activeProject : projectID;
+  const projects = store.local.projects;
   const items: SessionInfo[] = store.connected
     ? store.sessions.filter((s) => store.registered.includes(s.id))
-    : store.local.sessions.map(
-        (l) =>
-          ({
-            id: l.id,
-            title: l.title,
-            time: { updated: l.when },
-            directory: t("chat.device"),
-          }) as SessionInfo,
-      );
+    : store.local.sessions
+        .filter((l) => !scope || l.projectID === scope)
+        .map(
+          (l) =>
+            ({
+              id: l.id,
+              title: l.title,
+              time: { updated: l.when },
+              directory: projects.find((p) => p.id === l.projectID)?.name || t("chat.device"),
+            }) as SessionInfo,
+        );
   return [...items].sort((a, b) => (b.time?.updated || 0) - (a.time?.updated || 0));
+}
+
+/**
+ * Projects as workspaces: tap one to scope the session list to it, long-press
+ * for its sessions and a way to start another inside it.
+ *
+ * Only offered on device. With a server connected the projects come from
+ * opencode itself and are its own directories, not folders this app made.
+ */
+function ProjectStrip({
+  theme,
+  onNewSession,
+  onOpenSession,
+}: {
+  theme: Theme;
+  onNewSession: () => void;
+  onOpenSession: (id: string) => void;
+}) {
+  const store = useStore();
+  const [creating, setCreating] = useState(false);
+  const [name, setName] = useState("");
+  const [cloud, setCloud] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const [expanded, setExpanded] = useState<string | null>(null);
+
+  const active = store.local.activeProject;
+  const projects = store.local.projects;
+
+  const create = async () => {
+    setBusy(true);
+    setErr("");
+    try {
+      await store.createProject(name, cloud);
+      setName("");
+      setCreating(false);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <View style={s.projects}>
+      <View style={s.projHead}>
+        <Text style={{ fontSize: 11, letterSpacing: 1.1, color: theme.faint }}>
+          {t("project.title").toUpperCase()}
+        </Text>
+        <Pressable
+          accessibilityLabel={t("project.new")}
+          onPress={() => setCreating((v) => !v)}
+          hitSlop={8}
+          style={({ pressed }) => [s.iconBtn, { backgroundColor: pressed ? theme.l2 : "transparent" }]}
+        >
+          <Icon name={creating ? "close" : "folder-plus"} size={14} color={theme.muted} />
+        </Pressable>
+      </View>
+
+      {creating ? (
+        <View style={{ gap: 6, paddingBottom: 8 }}>
+          <TextInput
+            value={name}
+            onChangeText={setName}
+            autoFocus
+            placeholder={t("project.namePlaceholder")}
+            placeholderTextColor={theme.faint}
+            onSubmitEditing={create}
+            style={[s.projInput, { borderColor: theme.bdSoft, color: theme.ink }]}
+          />
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }}>
+            <ChoiceChip theme={theme} label={t("chat.device")} on={!cloud} onPress={() => setCloud("")} />
+            {CLOUD_IDS.filter((id) => store.cloudTokens[id]).map((id) => (
+              <ChoiceChip
+                key={id}
+                theme={theme}
+                label={cloudName(id)}
+                on={cloud === id}
+                onPress={() => setCloud(id)}
+              />
+            ))}
+          </ScrollView>
+          {err ? <Text style={{ fontSize: 11.5, color: theme.err }}>{err}</Text> : null}
+          <Pressable
+            onPress={create}
+            disabled={busy || !name.trim()}
+            style={({ pressed }) => [
+              s.projCreate,
+              { backgroundColor: busy || !name.trim() ? theme.l2 : pressed ? theme.l3 : theme.sndOn },
+            ]}
+          >
+            <Text style={{ fontSize: 12.5, fontWeight: "600", color: busy || !name.trim() ? theme.muted : "#fff" }}>
+              {t("project.create")}
+            </Text>
+          </Pressable>
+        </View>
+      ) : null}
+
+      {projects.length === 0 && !creating ? (
+        <Text style={{ fontSize: 11.5, color: theme.faint, paddingVertical: 6 }}>{t("project.none")}</Text>
+      ) : null}
+
+      {projects.map((p) => {
+        const on = p.id === active;
+        const open = expanded === p.id;
+        const own = visibleSessions(store, p.id);
+        return (
+          <View key={p.id}>
+            <Pressable
+              onPress={() => store.setActiveProject(on ? "" : p.id)}
+              onLongPress={() => setExpanded(open ? null : p.id)}
+              delayLongPress={280}
+              style={({ pressed }) => [s.projRow, { backgroundColor: on || pressed ? theme.l2 : "transparent" }]}
+            >
+              <View style={[s.projMark, { backgroundColor: theme.avBg }]}>
+                <Text style={{ color: theme.avFg, fontSize: 11, fontWeight: "600" }}>
+                  {p.name[0]?.toUpperCase() || "?"}
+                </Text>
+              </View>
+              <Text style={{ flex: 1, fontSize: 13, color: theme.ink }} numberOfLines={1}>
+                {p.name}
+              </Text>
+              {p.cloud ? <Icon name="cloud" size={13} color={theme.faint} /> : null}
+            </Pressable>
+
+            {open ? (
+              <View style={{ paddingLeft: 30, paddingBottom: 6 }}>
+                {own.map((ses) => (
+                  <Pressable
+                    key={ses.id}
+                    onPress={() => onOpenSession(ses.id)}
+                    style={({ pressed }) => [s.projSub, { backgroundColor: pressed ? theme.l2 : "transparent" }]}
+                  >
+                    <Text style={{ fontSize: 12.5, color: theme.muted }} numberOfLines={1}>
+                      {ses.title || t("chat.newSession")}
+                    </Text>
+                  </Pressable>
+                ))}
+                <Pressable
+                  onPress={() => {
+                    store.setActiveProject(p.id);
+                    onNewSession();
+                  }}
+                  style={({ pressed }) => [s.projSub, { backgroundColor: pressed ? theme.l2 : "transparent" }]}
+                >
+                  <Text style={{ fontSize: 12.5, color: theme.acc }}>+ {t("chat.newSession")}</Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => store.removeProject(p.id)}
+                  style={({ pressed }) => [s.projSub, { backgroundColor: pressed ? theme.l2 : "transparent" }]}
+                >
+                  <Text style={{ fontSize: 12, color: theme.err }}>{t("project.forget")}</Text>
+                </Pressable>
+              </View>
+            ) : null}
+          </View>
+        );
+      })}
+    </View>
+  );
+}
+
+function ChoiceChip({
+  theme,
+  label,
+  on,
+  onPress,
+}: {
+  theme: Theme;
+  label: string;
+  on: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [
+        s.chip,
+        { borderColor: on ? theme.acc : theme.bdSoft, backgroundColor: pressed ? theme.l2 : "transparent" },
+      ]}
+    >
+      <Text style={{ fontSize: 12, color: on ? theme.acc : theme.muted }}>{label}</Text>
+    </Pressable>
+  );
 }
 
 export function SessionsPanel({
@@ -115,6 +304,17 @@ export function SessionsPanel({
             <Icon name="close" size={14} color={theme.muted} />
           </Pressable>
         </View>
+
+        {!store.connected ? (
+          <ProjectStrip
+            theme={theme}
+            onNewSession={onNew}
+            onOpenSession={(id) => {
+              store.openSession(id);
+              onClose();
+            }}
+          />
+        ) : null}
 
         <View style={s.searchWrap}>
           <View style={[s.search, { borderColor: theme.bdSoft }]}>
@@ -231,6 +431,14 @@ export function SessionsPanel({
 }
 
 const s = StyleSheet.create({
+  projects: { paddingHorizontal: 14, paddingBottom: 4 },
+  projHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: 6 },
+  projRow: { flexDirection: "row", alignItems: "center", gap: 8, paddingVertical: 7, paddingHorizontal: 6, borderRadius: 7 },
+  projMark: { width: 20, height: 20, borderRadius: 5, alignItems: "center", justifyContent: "center" },
+  projSub: { paddingVertical: 6, paddingHorizontal: 6, borderRadius: 6 },
+  projInput: { borderWidth: 1, borderRadius: 8, paddingHorizontal: 10, height: 38, fontSize: 13 },
+  projCreate: { height: 36, borderRadius: 8, alignItems: "center", justifyContent: "center" },
+  chip: { borderWidth: 1, borderRadius: 7, paddingHorizontal: 10, paddingVertical: 6 },
   scrim: { position: "absolute", top: 0, bottom: 0, left: 0, right: 0 },
   panel: {
     position: "absolute",

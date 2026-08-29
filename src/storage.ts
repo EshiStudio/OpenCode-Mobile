@@ -361,9 +361,29 @@ const K_LOCAL = "ocm.local";
 
 export type LocalSessionMsg = { role: "user" | "assistant"; content: string };
 
+/**
+ * A workspace: a real folder, on the device or in a connected cloud, that a
+ * group of sessions belongs to. opencode organises work by project directory;
+ * picking a directory on a phone is awkward, so a project here is created by
+ * name and the folder is made for it.
+ */
+export type LocalProject = {
+  id: string;
+  /** Folder name, and what the project is called in the UI. */
+  name: string;
+  /** "" for the device, otherwise the cloud id holding the folder. */
+  cloud: string;
+  /** Where the folder ended up, for display and for the tools to write into. */
+  path: string;
+  when: number;
+};
+
 export type LocalState = {
-  sessions: Array<{ id: string; title: string; when: number }>;
+  sessions: Array<{ id: string; title: string; when: number; projectID?: string }>;
   messages: Record<string, LocalSessionMsg[]>;
+  projects: LocalProject[];
+  /** Project the sessions list is scoped to; "" means every session. */
+  activeProject: string;
   presetID: string;
   model: string;
   /** Model chosen per provider, so switching providers restores the right one. */
@@ -373,6 +393,8 @@ export type LocalState = {
 export const DEFAULT_LOCAL: LocalState = {
   sessions: [],
   messages: {},
+  projects: [],
+  activeProject: "",
   presetID: "deepseek",
   model: "deepseek-chat",
   modelByPreset: {},

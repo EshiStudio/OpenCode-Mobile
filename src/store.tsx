@@ -48,7 +48,8 @@ import { diskTools, downloadTools, fileTools, webTools, runTool, toolLabel } fro
 import { appTools, AppControl } from "./app-tools";
 import { t } from "./i18n";
 import { extractToken } from "./yandex";
-import { CloudId, CLOUD_IDS, cloudName, connect as cloudConnect } from "./clouds";
+import { CloudId, CLOUD_IDS, cloudName, connect as cloudConnect, makeFolder as cloudMakeFolder } from "./clouds";
+import { Directory, Paths } from "expo-file-system";
 import { OAuthCloud, refresh as oauthRefresh, signIn, stale } from "./oauth";
 import { APP_VERSION_LABEL, checkForUpdate, Release } from "./update";
 import { presetName } from "./local-ai";
@@ -170,6 +171,12 @@ export type StoreState = {
    * device-only session — there is no checkout to roll back.
    */
   revertTo: (messageID: string) => Promise<void>;
+  /** Creates the project's folder, then the project. Rejects if the folder cannot be made. */
+  createProject: (name: string, cloud: string) => Promise<string>;
+  /** Forgets a project. The folder and its files are left alone. */
+  removeProject: (id: string) => void;
+  /** Scopes the sessions list to a project; "" shows all of them. */
+  setActiveProject: (id: string) => void;
   respondPermission: (p: PermissionRequest, response: "allow" | "deny", remember?: boolean) => void;
   setModel: (providerID: string, modelID: string) => void;
   setVariant: (v: EffortVariant) => void;
@@ -185,6 +192,18 @@ export function useStore(): StoreState {
   const s = useContext(Ctx);
   if (!s) throw new Error("no store");
   return s;
+}
+
+/** Everything a project creates lives under one folder, device or cloud alike. */
+const PROJECT_DIR = "opencode-projects";
+
+/** Folder names have to survive both a filesystem and three cloud APIs. */
+function folderName(name: string): string {
+  return name
+    .trim()
+    .replace(/[\\/:*?"<>|]/g, "-")
+    .replace(/\s+/g, " ")
+    .slice(0, 60);
 }
 
 export function StoreProvider({
@@ -524,7 +543,10 @@ export function StoreProvider({
       setState((s) => {
         const local: LocalState = {
           ...s.local,
-          sessions: [{ id: sid, title: t("chat.newSession"), when: Date.now() }, ...s.local.sessions],
+          sessions: [
+            { id: sid, title: t("chat.newSession"), when: Date.now(), projectID: s.local.activeProject || undefined },
+            ...s.local.sessions,
+          ],
         };
         saveLocal(local);
         return { ...s, activeId: sid, local };
@@ -629,6 +651,63 @@ export function StoreProvider({
     },
     [refreshMessages],
   );
+
+  const createProject = useCallback(async (name: string, cloud: string) => {
+    const safe = folderName(name);
+    if (!safe) throw new Error(t("project.needName"));
+
+    const { cloudTokens, cloudRoots, local } = stateRef.current;
+    if (local.projects.some((p) => p.name.toLowerCase() === safe.toLowerCase() && p.cloud === cloud)) {
+      throw new Error(t("project.exists"));
+    }
+
+    let path: string;
+    if (cloud) {
+      const token = cloudTokens[cloud];
+      if (!token) throw new Error(t("project.noCloud"));
+      const rel = `${PROJECT_DIR}/${safe}`;
+      await cloudMakeFolder(cloud as CloudId, token, rel, cloudRoots[cloud]);
+      path = rel;
+    } else {
+      const dir = new Directory(Paths.document, PROJECT_DIR, safe);
+      if (!dir.exists) dir.create({ intermediates: true } as never);
+      path = dir.uri;
+    }
+
+    const id = "prj_" + Date.now();
+    setState((st) => {
+      const next: LocalState = {
+        ...st.local,
+        projects: [{ id, name: safe, cloud, path, when: Date.now() }, ...st.local.projects],
+        activeProject: id,
+      };
+      saveLocal(next);
+      return { ...st, local: next };
+    });
+    return id;
+  }, []);
+
+  const removeProject = useCallback((id: string) => {
+    setState((st) => {
+      const next: LocalState = {
+        ...st.local,
+        projects: st.local.projects.filter((p) => p.id !== id),
+        activeProject: st.local.activeProject === id ? "" : st.local.activeProject,
+        // Sessions outlive their project: losing the folder should not lose the chat.
+        sessions: st.local.sessions.map((x) => (x.projectID === id ? { ...x, projectID: undefined } : x)),
+      };
+      saveLocal(next);
+      return { ...st, local: next };
+    });
+  }, []);
+
+  const setActiveProject = useCallback((id: string) => {
+    setState((st) => {
+      const next: LocalState = { ...st.local, activeProject: id };
+      saveLocal(next);
+      return { ...st, local: next };
+    });
+  }, []);
 
   const localAcRef = useRef<AbortController | null>(null);
 
@@ -1240,6 +1319,9 @@ export function StoreProvider({
     checkUpdate,
     saveYandex,
     revertTo,
+    createProject,
+    removeProject,
+    setActiveProject,
     localAbort: () => localAcRef.current?.abort(),
     clearError: () => setState((s) => ({ ...s, error: null })),
   };
