@@ -1,0 +1,1141 @@
+import React, { useState } from "react";
+import {
+  Animated,
+  Dimensions,
+  KeyboardAvoidingView,
+  Linking,
+  Modal,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Switch,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
+import { BrandIcon, DriveIcon, Icon, IconName } from "./icons";
+import { Theme } from "./theme";
+import { useStore, variantName } from "./store";
+import { BUILTIN_IDS, FEATURED_IDS, catalogModels, presetName } from "./local-ai";
+import { ProviderPreset } from "./storage";
+import { CLOUDS, CloudId } from "./clouds";
+
+/**
+ * Settings is a small navigation stack: a full-screen list of grouped rows, and
+ * one pushed screen per topic. Everything a row leads to gets the whole width,
+ * which the provider search and the cloud forms need.
+ */
+type Page = "root" | "basic" | "appearance" | "providers" | "models" | "clouds" | "server" | "about";
+
+const TITLES: Record<Page, string> = {
+  root: "Настройки",
+  basic: "Основные",
+  appearance: "Внешний вид",
+  providers: "Провайдеры",
+  models: "Модель",
+  clouds: "Облака",
+  server: "Сервер opencode",
+  about: "О программе",
+};
+
+/** Android resizes the window for the keyboard already; only iOS needs padding. */
+const AVOID = Platform.OS === "ios" ? "padding" : undefined;
+
+export function SettingsScreen({
+  theme,
+  dark,
+  setDark,
+  open,
+  onClose,
+}: {
+  theme: Theme;
+  dark: boolean;
+  setDark: (d: boolean) => void;
+  open: boolean;
+  onClose: () => void;
+}) {
+  const [page, setPage] = useState<Page>("root");
+  const off = Dimensions.get("window").width || 520;
+  const tx = React.useRef(new Animated.Value(off)).current;
+
+  React.useEffect(() => {
+    Animated.timing(tx, { toValue: open ? 0 : off, duration: 220, useNativeDriver: true }).start();
+    // Reopening lands on the list again, not on whatever was left open.
+    if (!open) {
+      const t = setTimeout(() => setPage("root"), 240);
+      return () => clearTimeout(t);
+    }
+  }, [open, tx, off]);
+
+  const back = () => (page === "root" ? onClose() : setPage("root"));
+
+  return (
+    <View
+      style={[
+        StyleSheet.absoluteFill,
+        { zIndex: 50, opacity: open ? 1 : 0, pointerEvents: open ? "auto" : "none" } as never,
+      ]}
+    >
+      <Animated.View style={[s.window, { backgroundColor: theme.bg, transform: [{ translateX: tx }] }]}>
+        <View style={s.head}>
+          <Pressable onPress={back} hitSlop={10} style={({ pressed }) => [s.backBtn, { backgroundColor: pressed ? theme.l3 : theme.l2 }]}>
+            <Icon name="arrow-left" size={16} color={theme.ink} />
+          </Pressable>
+          <Text style={{ flex: 1, textAlign: "center", fontSize: 15.5, fontWeight: "600", color: theme.ink }} numberOfLines={1}>
+            {TITLES[page]}
+          </Text>
+          <View style={s.backBtn} />
+        </View>
+
+        <KeyboardAvoidingView behavior={AVOID} style={{ flex: 1, minHeight: 0 }}>
+          <ScrollView
+            contentContainerStyle={{ padding: 14, paddingBottom: 60 }}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="on-drag"
+          >
+            {page === "root" ? <RootPage theme={theme} dark={dark} go={setPage} /> : null}
+            {page === "basic" ? <BasicSection theme={theme} /> : null}
+            {page === "appearance" ? <AppearanceSection theme={theme} dark={dark} setDark={setDark} /> : null}
+            {page === "providers" ? <ProvidersSection theme={theme} /> : null}
+            {page === "models" ? <ModelsSection theme={theme} /> : null}
+            {page === "clouds" ? <CloudsSection theme={theme} /> : null}
+            {page === "server" ? <ServerSection theme={theme} /> : null}
+            {page === "about" ? <AboutSection theme={theme} /> : null}
+          </ScrollView>
+        </KeyboardAvoidingView>
+      </Animated.View>
+    </View>
+  );
+}
+
+/** The list on the screenshot: grouped cards, a value on the right, a chevron. */
+function RootPage({ theme, dark, go }: { theme: Theme; dark: boolean; go: (p: Page) => void }) {
+  const store = useStore();
+  const keyed = store.providers.filter((p) => store.keys[p.id]);
+  const clouds = CLOUDS.filter((c) => store.cloudTokens[c.id]);
+  const model = store.isLocal
+    ? store.local.modelByPreset[store.local.presetID] || store.local.model
+    : store.models.find((p) => p.id === store.providerId)?.models.find((m) => m.id === store.modelId)?.name;
+
+  return (
+    <>
+      <GroupTitle theme={theme} first>
+        Приложение
+      </GroupTitle>
+      <NavCard theme={theme}>
+        <NavRow theme={theme} icon="sliders" title="Основные" onPress={() => go("basic")} />
+        <NavRow theme={theme} icon="moon" title="Внешний вид" value={dark ? "Тёмная" : "Светлая"} last onPress={() => go("appearance")} />
+      </NavCard>
+
+      <GroupTitle theme={theme}>Модели</GroupTitle>
+      <NavCard theme={theme}>
+        <NavRow
+          theme={theme}
+          icon="providers"
+          title="Провайдеры"
+          value={keyed.length ? keyed.length + " подключено" : "нет"}
+          onPress={() => go("providers")}
+        />
+        <NavRow theme={theme} icon="models" title="Модель" value={model || "не выбрана"} last onPress={() => go("models")} />
+      </NavCard>
+
+      <GroupTitle theme={theme}>Хранилища</GroupTitle>
+      <NavCard theme={theme}>
+        <NavRow
+          theme={theme}
+          icon="cloud"
+          title="Облака"
+          value={clouds.length ? clouds.map((c) => c.name).join(", ") : "не подключены"}
+          onPress={() => go("clouds")}
+        />
+        <NavRow
+          theme={theme}
+          icon="terminal"
+          title="Сервер opencode"
+          value={store.serverVersion ? "v" + store.serverVersion : "выключен"}
+          last
+          onPress={() => go("server")}
+        />
+      </NavCard>
+
+      <GroupTitle theme={theme}>О программе</GroupTitle>
+      <NavCard theme={theme}>
+        <NavRow theme={theme} icon="info" title="Версия и обновления" value={store.appVersion} last onPress={() => go("about")} />
+      </NavCard>
+    </>
+  );
+}
+
+function GroupTitle({ theme, children, first }: { theme: Theme; children: React.ReactNode; first?: boolean }) {
+  return <Text style={[s.groupTitle, { color: theme.faint }, first && { marginTop: 2 }]}>{children}</Text>;
+}
+
+function NavCard({ theme, children }: { theme: Theme; children: React.ReactNode }) {
+  return <View style={[s.navCard, { backgroundColor: theme.l1 }]}>{children}</View>;
+}
+
+function NavRow({
+  theme,
+  icon,
+  title,
+  value,
+  last,
+  onPress,
+}: {
+  theme: Theme;
+  icon: IconName;
+  title: string;
+  value?: string;
+  last?: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [
+        s.navRow,
+        !last && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.bdSoft },
+        { backgroundColor: pressed ? theme.l2 : "transparent" },
+      ]}
+    >
+      <Icon name={icon} size={17} color={theme.ink} />
+      <Text style={{ fontSize: 14.5, color: theme.ink, flexShrink: 0 }} numberOfLines={1}>
+        {title}
+      </Text>
+      <View style={{ flex: 1, minWidth: 8 }} />
+      {value ? (
+        <Text style={{ fontSize: 13, color: theme.faint, flexShrink: 1 }} numberOfLines={1}>
+          {value}
+        </Text>
+      ) : null}
+      <View style={{ transform: [{ rotate: "-90deg" }] }}>
+        <Icon name="chevron-down" size={14} color={theme.faint} />
+      </View>
+    </Pressable>
+  );
+}
+
+function Card({ theme, children }: { theme: Theme; children: React.ReactNode }) {
+  return <View style={[s.card, { backgroundColor: theme.bg, borderColor: theme.bdSoft }]}>{children}</View>;
+}
+
+function Row({ theme, children, last }: { theme: Theme; children: React.ReactNode; last?: boolean }) {
+  return (
+    <View style={[s.row, !last && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.bdSoft }]}>
+      {children}
+    </View>
+  );
+}
+
+function Toggle({ theme, value, onChange }: { theme: Theme; value: boolean; onChange: (v: boolean) => void }) {
+  return <Switch value={value} onValueChange={onChange} trackColor={{ false: theme.l3, true: theme.acc }} thumbColor="#ffffff" />;
+}
+
+function AppearanceSection({ theme, dark, setDark }: { theme: Theme; dark: boolean; setDark: (d: boolean) => void }) {
+  const options: Array<{ id: boolean; name: string; icon: IconName }> = [
+    { id: false, name: "Светлая", icon: "sun" },
+    { id: true, name: "Тёмная", icon: "moon" },
+  ];
+  return (
+    <NavCard theme={theme}>
+      {options.map((o, i) => (
+        <Pressable
+          key={o.name}
+          onPress={() => setDark(o.id)}
+          style={({ pressed }) => [
+            s.navRow,
+            i < options.length - 1 && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.bdSoft },
+            { backgroundColor: pressed ? theme.l2 : "transparent" },
+          ]}
+        >
+          <Icon name={o.icon} size={17} color={theme.ink} />
+          <Text style={{ flex: 1, fontSize: 14.5, color: theme.ink }}>{o.name}</Text>
+          {dark === o.id ? <Icon name="check" size={15} color={theme.acc} /> : null}
+        </Pressable>
+      ))}
+    </NavCard>
+  );
+}
+
+function AboutSection({ theme }: { theme: Theme }) {
+  const store = useStore();
+  const [repo, setRepo] = useState(store.updateRepo);
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState("");
+
+  React.useEffect(() => setRepo(store.updateRepo), [store.updateRepo]);
+
+  const check = async () => {
+    setBusy(true);
+    setNote("");
+    await store.setUpdateRepo(repo.trim());
+    const rel = await store.checkUpdate();
+    setBusy(false);
+    setNote(rel ? "Доступна версия " + rel.version : repo.trim() ? "Установлена последняя версия" : "Укажите репозиторий");
+  };
+
+  return (
+    <>
+      <Card theme={theme}>
+        <Row theme={theme}>
+          <View style={s.rowText}>
+            <Text style={{ fontSize: 13.5, color: theme.ink, fontWeight: "600" }}>Версия приложения</Text>
+          </View>
+          <Text style={{ fontSize: 13, color: theme.muted }}>{store.appVersion}</Text>
+        </Row>
+        <Row theme={theme} last>
+          <View style={s.rowText}>
+            <Text style={{ fontSize: 13.5, color: theme.ink, fontWeight: "600" }}>Репозиторий обновлений</Text>
+            <Text style={{ fontSize: 12, color: theme.muted, marginTop: 2 }}>
+              GitHub в формате owner/repo — приложение смотрит его релизы при запуске.
+            </Text>
+            <TextInput
+              value={repo}
+              onChangeText={setRepo}
+              placeholder="owner/repo"
+              placeholderTextColor={theme.faint}
+              autoCapitalize="none"
+              autoCorrect={false}
+              style={[s.textInput, { color: theme.ink, borderColor: theme.bd }]}
+            />
+          </View>
+        </Row>
+      </Card>
+
+      <Pressable
+        onPress={check}
+        disabled={busy}
+        style={({ pressed }) => [s.wideBtn, { backgroundColor: pressed ? theme.l3 : theme.sndOn }]}
+      >
+        <Text style={{ fontSize: 13.5, color: "#ffffff", fontWeight: "600" }}>
+          {busy ? "Проверяем…" : "Проверить обновления"}
+        </Text>
+      </Pressable>
+      {note ? <Text style={{ fontSize: 12, color: theme.muted, marginTop: 10 }}>{note}</Text> : null}
+      {store.update ? (
+        <Pressable
+          onPress={() => Linking.openURL(store.update!.apkUrl || store.update!.pageUrl)}
+          style={({ pressed }) => [s.wideBtn, s.btnGhost, { borderColor: theme.bd, backgroundColor: pressed ? theme.l2 : "transparent" }]}
+        >
+          <Text style={{ fontSize: 13.5, color: theme.acc }}>Скачать {store.update.version}</Text>
+        </Pressable>
+      ) : null}
+    </>
+  );
+}
+
+function BasicSection({ theme }: { theme: Theme }) {
+  const store = useStore();
+  return (
+    <Card theme={theme}>
+      <Row theme={theme}>
+        <View style={s.rowText}>
+          <Text style={{ fontSize: 13.5, color: theme.ink, fontWeight: "600" }}>Автоматически принимать разрешения</Text>
+          <Text style={{ fontSize: 12, color: theme.muted, marginTop: 2 }}>Запросы на разрешения будут одобряться автоматически</Text>
+        </View>
+        <Toggle theme={theme} value={store.settings.autoAllowPermissions} onChange={(v) => store.updateSettings({ autoAllowPermissions: v })} />
+      </Row>
+      <Row theme={theme}>
+        <View style={s.rowText}>
+          <Text style={{ fontSize: 13.5, color: theme.ink, fontWeight: "600" }}>Локальная работа</Text>
+          <Text style={{ fontSize: 12, color: theme.muted, marginTop: 2 }}>
+            Дать нейросети доступ к устройству для локальной работы: создание папок и файлов
+          </Text>
+        </View>
+        <Toggle theme={theme} value={store.settings.localWork} onChange={(v) => store.updateSettings({ localWork: v })} />
+      </Row>
+      <Row theme={theme}>
+        <View style={s.rowText}>
+          <Text style={{ fontSize: 13.5, color: theme.ink, fontWeight: "600" }}>Показывать сводки рассуждений</Text>
+          <Text style={{ fontSize: 12, color: theme.muted, marginTop: 2 }}>Отображать сводки рассуждений модели</Text>
+        </View>
+        <Toggle theme={theme} value={store.settings.showReasoning} onChange={(v) => store.updateSettings({ showReasoning: v })} />
+      </Row>
+      <Row theme={theme}>
+        <View style={s.rowText}>
+          <Text style={{ fontSize: 13.5, color: theme.ink, fontWeight: "600" }}>Разворачивать элементы инструмента shell</Text>
+          <Text style={{ fontSize: 12, color: theme.muted, marginTop: 2 }}>Показывать элементы инструмента shell развернутыми</Text>
+        </View>
+        <Toggle theme={theme} value={store.settings.expandShell} onChange={(v) => store.updateSettings({ expandShell: v })} />
+      </Row>
+      <Row theme={theme} last>
+        <View style={s.rowText}>
+          <Text style={{ fontSize: 13.5, color: theme.ink, fontWeight: "600" }}>Разворачивать элементы инструмента edit</Text>
+          <Text style={{ fontSize: 12, color: theme.muted, marginTop: 2 }}>Показывать элементы инструментов edit, write и patch развернутыми</Text>
+        </View>
+        <Toggle theme={theme} value={store.settings.expandEdit} onChange={(v) => store.updateSettings({ expandEdit: v })} />
+      </Row>
+    </Card>
+  );
+}
+
+/** Brand mark for a storage; Yandex has no authentic path on file, so it gets a cloud glyph. */
+function CloudMark({ id }: { id: CloudId }) {
+  if (id === "yandex") return <Icon name="cloud" size={17} color="#FC3F1D" />;
+  if (id === "gdrive") return <DriveIcon size={17} />;
+  return <BrandIcon providerID={id} size={17} colored />;
+}
+
+function CloudRow({ theme, cloud }: { theme: Theme; cloud: { id: CloudId; name: string; hint: string } }) {
+  const store = useStore();
+  const [open, setOpen] = useState(false);
+  const [token, setToken] = useState("");
+  const [clientId, setClientIdInput] = useState(store.clientIds[cloud.id] || "");
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState("");
+  const [failed, setFailed] = useState(false);
+
+  React.useEffect(() => setClientIdInput(store.clientIds[cloud.id] || ""), [store.clientIds, cloud.id]);
+
+  const connected = !!store.cloudTokens[cloud.id];
+  const root = store.cloudRoots[cloud.id];
+  // Google and Dropbox hand out short-lived tokens, so they sign in properly.
+  const oauth = cloud.id === "gdrive" || cloud.id === "dropbox";
+  const ready = !oauth || !!store.clientIds[cloud.id];
+
+  const guard = async (fn: () => Promise<string>) => {
+    setBusy(true);
+    setNote("");
+    setFailed(false);
+    try {
+      setNote(await fn());
+      setToken("");
+      setOpen(false);
+    } catch (e) {
+      setFailed(true);
+      setNote(e instanceof Error ? e.message : "Не удалось подключить");
+    }
+    setBusy(false);
+  };
+
+  return (
+    <View style={s.pitchRow}>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 9 }}>
+        <CloudMark id={cloud.id} />
+        <Text style={{ fontSize: 13.5, color: theme.ink, fontWeight: "600", flexShrink: 1 }} numberOfLines={1}>
+          {cloud.name}
+        </Text>
+        {connected ? (
+          <>
+            <Text style={[s.tag, { color: theme.muted, backgroundColor: theme.l3 }]}>{root || "opencode"}</Text>
+            <View style={[s.dot, { backgroundColor: theme.ok }]} />
+          </>
+        ) : null}
+        <View style={{ flex: 1 }} />
+        {connected ? (
+          <Pressable onPress={() => guard(() => store.connectCloud(cloud.id, ""))} hitSlop={10}>
+            <Text style={{ fontSize: 12.5, color: theme.muted }}>Отключить</Text>
+          </Pressable>
+        ) : (
+          <Pressable
+            disabled={busy}
+            onPress={() => {
+              if (oauth && ready) guard(() => store.signInCloud(cloud.id as "gdrive" | "dropbox"));
+              else setOpen(!open);
+            }}
+            style={({ pressed }) => [s.connectBtn, { borderColor: theme.bd, backgroundColor: pressed ? theme.l3 : theme.bg }]}
+          >
+            <Icon name={oauth ? "link" : "plus"} size={11} color={theme.ink} />
+            <Text style={{ fontSize: 12.5, color: theme.ink }}>
+              {busy ? "…" : oauth ? (ready ? "Войти" : "Настроить") : "Подключить"}
+            </Text>
+          </Pressable>
+        )}
+      </View>
+
+      {open && !connected ? (
+        <View style={{ marginTop: 12 }}>
+          {oauth ? (
+            <>
+              <Text style={[s.fieldLabel, { color: theme.faint }]}>Client ID</Text>
+              <TextInput
+                value={clientId}
+                onChangeText={setClientIdInput}
+                placeholder={cloud.id === "gdrive" ? "…apps.googleusercontent.com" : "ключ приложения Dropbox"}
+                placeholderTextColor={theme.faint}
+                autoCapitalize="none"
+                autoCorrect={false}
+                style={[s.textInput, { color: theme.ink, borderColor: theme.bd, backgroundColor: theme.bg }]}
+              />
+              <Text style={{ fontSize: 11, color: theme.faint, marginTop: 6, lineHeight: 15 }}>
+                Redirect URI приложения: opencodemobile://oauth
+              </Text>
+            </>
+          ) : (
+            <>
+              <Text style={[s.fieldLabel, { color: theme.faint }]}>Токен доступа</Text>
+              <TextInput
+                value={token}
+                onChangeText={setToken}
+                placeholder="вставьте токен"
+                placeholderTextColor={theme.faint}
+                autoCapitalize="none"
+                autoCorrect={false}
+                secureTextEntry
+                style={[s.textInput, { color: theme.ink, borderColor: theme.bd, backgroundColor: theme.bg }]}
+              />
+            </>
+          )}
+          <View style={{ flexDirection: "row", gap: 8, marginTop: 10 }}>
+            <Pressable
+              disabled={busy}
+              onPress={() =>
+                oauth
+                  ? guard(async () => {
+                      await store.setClientId(cloud.id, clientId);
+                      return await store.signInCloud(cloud.id as "gdrive" | "dropbox");
+                    })
+                  : guard(() => store.connectCloud(cloud.id, token))
+              }
+              style={({ pressed }) => [s.btn, { backgroundColor: pressed ? theme.l3 : theme.sndOn }]}
+            >
+              <Text style={{ fontSize: 12.5, color: "#ffffff" }}>
+                {busy ? "Проверка…" : oauth ? "Сохранить и войти" : "Подключить"}
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={() => setOpen(false)}
+              style={({ pressed }) => [s.btn, s.btnGhost, { borderColor: theme.bd, backgroundColor: pressed ? theme.l2 : "transparent" }]}
+            >
+              <Text style={{ fontSize: 12.5, color: theme.muted }}>Отмена</Text>
+            </Pressable>
+          </View>
+        </View>
+      ) : null}
+
+      {note ? (
+        <Text style={{ fontSize: 11.5, marginTop: 10, color: failed ? theme.err : theme.ok }}>{note}</Text>
+      ) : null}
+    </View>
+  );
+}
+
+
+function CloudsSection({ theme }: { theme: Theme }) {
+  return (
+    <>
+      <Text style={{ fontSize: 12, color: theme.muted, marginBottom: 10, lineHeight: 17 }}>
+        Куда складывать файлы, когда локальная работа выключена. Рабочая папка opencode создаётся при подключении.
+      </Text>
+      <ListCard theme={theme}>
+        {CLOUDS.map((c, i) => (
+          <View
+            key={c.id}
+            style={i < CLOUDS.length - 1 ? { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.bdSoft } : undefined}
+          >
+            <CloudRow theme={theme} cloud={c} />
+          </View>
+        ))}
+      </ListCard>
+    </>
+  );
+}
+
+function ServerSection({ theme }: { theme: Theme }) {
+  const store = useStore();
+  return (
+    <>
+      <ListCard theme={theme}>
+        <View style={s.pitchRow}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 9 }}>
+            <Icon name="terminal" size={16} color={theme.ink} />
+            <Text style={{ fontSize: 13.5, color: theme.ink, fontWeight: "600", flexShrink: 1 }} numberOfLines={1}>
+              Сервер на компьютере
+            </Text>
+            {store.serverVersion ? (
+              <Text style={[s.tag, { color: theme.ok, backgroundColor: theme.okBg }]}>v{store.serverVersion}</Text>
+            ) : null}
+          </View>
+          <Text style={{ fontSize: 12, color: theme.muted, marginTop: 5, lineHeight: 16 }}>
+            {store.serverVersion
+              ? "Подключено — сессии и инструменты идут через сервер."
+              : "Необязательно. Нужен для работы с проектами на ПК."}
+          </Text>
+        </View>
+      </ListCard>
+      <Text style={{ fontSize: 12, color: theme.muted, marginTop: 12, lineHeight: 17 }}>
+        Запустите на ПК и укажите его адрес в локальной сети:
+      </Text>
+      <Text
+        selectable
+        style={{ fontFamily: "monospace", fontSize: 11.5, color: theme.ink, backgroundColor: theme.l1, padding: 10, borderRadius: 7, marginTop: 8 }}
+      >
+        opencode serve --hostname 0.0.0.0 --port 41111
+      </Text>
+    </>
+  );
+}
+
+
+/** Where a connected provider's credentials came from. */
+function sourceBadge(builtin: boolean): string {
+  return builtin ? "Ключ API" : "Пользовательский";
+}
+
+function ListCard({ theme, children }: { theme: Theme; children: React.ReactNode }) {
+  return <View style={[s.listCard, { backgroundColor: theme.l1, borderColor: theme.bdSoft }]}>{children}</View>;
+}
+
+/** A connected provider: name, where its key came from, and a way to drop it. */
+function ConnectedRow({
+  theme,
+  preset,
+  builtin,
+  active,
+  last,
+  onPress,
+  onDisconnect,
+}: {
+  theme: Theme;
+  preset: ProviderPreset;
+  builtin: boolean;
+  active: boolean;
+  last?: boolean;
+  onPress: () => void;
+  onDisconnect: () => void;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [
+        s.listRow,
+        !last && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.bdSoft },
+        { backgroundColor: pressed ? theme.l2 : "transparent" },
+      ]}
+    >
+      <BrandIcon providerID={preset.id} size={16} color={theme.ink} />
+      <Text style={{ fontSize: 13.5, color: theme.ink, fontWeight: "600", flexShrink: 1 }} numberOfLines={1}>
+        {presetName(preset)}
+      </Text>
+      <Text style={[s.tag, { color: theme.muted, backgroundColor: theme.l3 }]}>{sourceBadge(builtin)}</Text>
+      {active ? <View accessibilityLabel="активен" style={[s.dot, { backgroundColor: theme.ok }]} /> : null}
+      <View style={{ flex: 1 }} />
+      <Pressable onPress={onDisconnect} hitSlop={10}>
+        <Text style={{ fontSize: 12.5, color: theme.muted }}>Отключить</Text>
+      </Pressable>
+    </Pressable>
+  );
+}
+
+/** An unconfigured provider, pitched with a one-liner and a connect button. */
+function PopularRow({
+  theme,
+  preset,
+  last,
+  onConnect,
+}: {
+  theme: Theme;
+  preset: ProviderPreset;
+  last?: boolean;
+  onConnect: () => void;
+}) {
+  return (
+    <View style={[s.pitchRow, !last && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.bdSoft }]}>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 9 }}>
+        <BrandIcon providerID={preset.id} size={16} color={theme.ink} />
+        <Text style={{ fontSize: 13.5, color: theme.ink, fontWeight: "600", flexShrink: 1 }} numberOfLines={1}>
+          {presetName(preset)}
+        </Text>
+        <View style={{ flex: 1 }} />
+        <Pressable
+          onPress={onConnect}
+          style={({ pressed }) => [s.connectBtn, { borderColor: theme.bd, backgroundColor: pressed ? theme.l3 : theme.bg }]}
+        >
+          <Icon name="plus" size={11} color={theme.ink} />
+          <Text style={{ fontSize: 12.5, color: theme.ink }}>Подключить</Text>
+        </Pressable>
+      </View>
+      {preset.desc ? (
+        <Text style={{ fontSize: 12, color: theme.muted, marginTop: 5, lineHeight: 16 }}>{preset.desc}</Text>
+      ) : null}
+    </View>
+  );
+}
+
+type Dialog =
+  | { kind: "connect"; preset: ProviderPreset }
+  | { kind: "configure"; preset: ProviderPreset }
+  | { kind: "custom" };
+
+function ProvidersSection({ theme }: { theme: Theme }) {
+  const store = useStore();
+  const selected = store.local.presetID;
+  const [dialog, setDialog] = useState<Dialog | null>(null);
+  const [query, setQuery] = useState("");
+
+  const connected = store.providers.filter((p) => store.keys[p.id] || !BUILTIN_IDS.includes(p.id));
+  const rest = store.providers.filter((p) => !store.keys[p.id] && BUILTIN_IDS.includes(p.id));
+
+  const q = query.trim().toLowerCase();
+  const found = q
+    ? rest.filter(
+        (p) => presetName(p).toLowerCase().includes(q) || p.id.includes(q) || p.baseURL.toLowerCase().includes(q),
+      )
+    : [];
+  const featured = rest.filter((p) => FEATURED_IDS.includes(p.id));
+  const list = q ? found.slice(0, 40) : featured;
+
+  return (
+    <>
+      {connected.length ? (
+        <ListCard theme={theme}>
+          {connected.map((p, i) => (
+            <ConnectedRow
+              key={p.id}
+              theme={theme}
+              preset={p}
+              builtin={BUILTIN_IDS.includes(p.id)}
+              active={selected === p.id}
+              last={i === connected.length - 1}
+              onPress={() => setDialog({ kind: "configure", preset: p })}
+              onDisconnect={() => {
+                if (BUILTIN_IDS.includes(p.id)) store.saveProvider(p.id, { key: "" });
+                else store.removeProvider(p.id);
+              }}
+            />
+          ))}
+        </ListCard>
+      ) : (
+        <Text style={{ fontSize: 12.5, color: theme.muted, marginBottom: 4 }}>
+          Пока не подключён ни один провайдер.
+        </Text>
+      )}
+
+      <Text style={[s.sectionTitle, { color: theme.ink }]}>
+        {q ? "Результаты поиска" : "Популярные провайдеры"}
+      </Text>
+      <View style={[s.search, { borderColor: theme.bd, backgroundColor: theme.l1 }]}>
+        <Icon name="magnifying-glass" size={13} color={theme.faint} />
+        <TextInput
+          value={query}
+          onChangeText={setQuery}
+          placeholder={`Поиск среди ${rest.length} провайдеров`}
+          placeholderTextColor={theme.faint}
+          autoCapitalize="none"
+          autoCorrect={false}
+          style={{ flex: 1, color: theme.ink, fontSize: 12.5, padding: 0 }}
+        />
+        {query ? (
+          <Pressable onPress={() => setQuery("")} hitSlop={8}>
+            <Icon name="close" size={12} color={theme.faint} />
+          </Pressable>
+        ) : null}
+      </View>
+
+      {list.length ? (
+        <ListCard theme={theme}>
+          {list.map((p, i) => (
+            <PopularRow
+              key={p.id}
+              theme={theme}
+              preset={p}
+              last={i === list.length - 1}
+              onConnect={() => setDialog({ kind: "connect", preset: p })}
+            />
+          ))}
+        </ListCard>
+      ) : (
+        <Text style={{ fontSize: 12.5, color: theme.faint, paddingVertical: 20, textAlign: "center" }}>
+          {q ? "Ничего не найдено" : "Все популярные провайдеры уже подключены"}
+        </Text>
+      )}
+      {q && found.length > list.length ? (
+        <Text style={{ fontSize: 11.5, color: theme.faint, marginTop: 8 }}>
+          Показаны первые {list.length} из {found.length} — уточните запрос.
+        </Text>
+      ) : null}
+
+      <Text style={[s.sectionTitle, { color: theme.ink }]}>Другое</Text>
+      <ListCard theme={theme}>
+        <View style={s.pitchRow}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 9 }}>
+            <Icon name="models" size={16} color={theme.ink} />
+            <Text style={{ fontSize: 13.5, color: theme.ink, fontWeight: "600", flexShrink: 1 }} numberOfLines={1}>
+              Свой провайдер
+            </Text>
+            <View style={{ flex: 1 }} />
+            <Pressable
+              onPress={() => setDialog({ kind: "custom" })}
+              style={({ pressed }) => [s.connectBtn, { borderColor: theme.bd, backgroundColor: pressed ? theme.l3 : theme.bg }]}
+            >
+              <Icon name="plus" size={11} color={theme.ink} />
+              <Text style={{ fontSize: 12.5, color: theme.ink }}>Подключить</Text>
+            </Pressable>
+          </View>
+          <Text style={{ fontSize: 12, color: theme.muted, marginTop: 5, lineHeight: 16 }}>
+            Любой API, совместимый с OpenAI
+          </Text>
+        </View>
+      </ListCard>
+
+      <ProviderDialog theme={theme} dialog={dialog} onClose={() => setDialog(null)} />
+    </>
+  );
+}
+
+
+/** The connect / configure / add-custom sheet. */
+function ProviderDialog({ theme, dialog, onClose }: { theme: Theme; dialog: Dialog | null; onClose: () => void }) {
+  const store = useStore();
+  const preset = dialog && dialog.kind !== "custom" ? dialog.preset : null;
+  const id = preset?.id || "";
+
+  const [key, setKey] = useState("");
+  const [model, setModel] = useState("");
+  const [label, setLabel] = useState("");
+  const [url, setUrl] = useState("");
+  const [list, setList] = useState<string[] | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState("");
+
+  // Each opening starts from what is currently stored for that provider.
+  React.useEffect(() => {
+    if (!dialog) return;
+    setKey(preset ? store.keys[preset.id] || "" : "");
+    setModel(preset ? store.local.modelByPreset[preset.id] || "" : "");
+    setLabel("");
+    setUrl("");
+    setList(preset ? catalogModels(preset.id) : null);
+    setErr("");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dialog]);
+
+  if (!dialog) return null;
+
+  const configure = dialog.kind === "configure";
+  const custom = dialog.kind === "custom";
+  const name = preset ? presetName(preset) : "провайдера";
+  const active = !!preset && store.local.presetID === preset.id;
+
+  const title = custom ? "Добавить провайдера" : configure ? `Настроить ${name}` : `Подключить ${name}`;
+
+  const fetchModels = async () => {
+    if (!preset || !key.trim()) return;
+    setLoading(true);
+    // Save the key first so the shared cache (and the chat model picker) can use it.
+    if (key.trim() !== store.keys[preset.id]) await store.saveProvider(preset.id, { key: key.trim() });
+    setList(await store.fetchProviderModels(preset.id));
+    setLoading(false);
+  };
+
+  const submit = async () => {
+    if (custom) {
+      const base = url.trim().replace(/\/+$/, "");
+      if (!/^https?:\/\/.+/.test(base)) {
+        setErr("Адрес должен начинаться с http:// или https://");
+        return;
+      }
+      if (!model.trim()) {
+        setErr("Укажите идентификатор модели");
+        return;
+      }
+      const newId = "custom_" + Date.now();
+      await store.saveCustomPreset({
+        id: newId,
+        baseURL: base,
+        model: model.trim(),
+        name: label.trim() || "Свой провайдер",
+      });
+      await store.saveProvider(newId, { key: key.trim(), model: model.trim() });
+      store.setLocalPreset(newId);
+      onClose();
+      return;
+    }
+    if (!key.trim()) {
+      setErr("Введите ключ API");
+      return;
+    }
+    await store.saveProvider(id, { key: key.trim(), model: model.trim() || preset?.model || "" });
+    if (!configure) store.setLocalPreset(id);
+    onClose();
+  };
+
+  return (
+    <Modal visible transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        style={[s.dlgScrim, { backgroundColor: theme.scrim }]}
+      >
+        <View style={[s.dlg, { backgroundColor: theme.bg, borderColor: theme.bdSoft }]}>
+          <View style={s.dlgHead}>
+            <Pressable onPress={onClose} hitSlop={10} style={({ pressed }) => [s.iconBtn, { backgroundColor: pressed ? theme.l2 : "transparent" }]}>
+              <Icon name="arrow-left" size={15} color={theme.muted} />
+            </Pressable>
+            <Pressable onPress={onClose} hitSlop={10} style={({ pressed }) => [s.iconBtn, { backgroundColor: pressed ? theme.l2 : "transparent" }]}>
+              <Icon name="close" size={14} color={theme.muted} />
+            </Pressable>
+          </View>
+
+          <ScrollView contentContainerStyle={{ paddingHorizontal: 18, paddingBottom: 22 }} keyboardShouldPersistTaps="handled">
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 9 }}>
+              {preset ? <BrandIcon providerID={preset.id} size={17} color={theme.ink} /> : <Icon name="models" size={17} color={theme.ink} />}
+              <Text style={{ fontSize: 15.5, color: theme.ink, fontWeight: "600", flexShrink: 1 }} numberOfLines={1}>
+                {title}
+              </Text>
+            </View>
+
+            <Text style={{ fontSize: 12.5, color: theme.muted, marginTop: 12, lineHeight: 18 }}>
+              {custom
+                ? "Укажите адрес API, совместимого с OpenAI, и модель по умолчанию. Ключ можно оставить пустым, если провайдер его не требует."
+                : configure
+                  ? `Ключ и модель, которые OpenCode использует для ${name}.`
+                  : `Введите ключ API ${name}, чтобы подключить аккаунт и использовать модели ${name} в OpenCode.`}
+            </Text>
+
+            {custom ? (
+              <>
+                <Text style={[s.dlgLabel, { color: theme.ink }]}>Название</Text>
+                <TextInput
+                  value={label}
+                  onChangeText={setLabel}
+                  placeholder="Мой провайдер"
+                  placeholderTextColor={theme.faint}
+                  style={[s.dlgInput, { color: theme.ink, borderColor: theme.bd, backgroundColor: theme.bg }]}
+                />
+                <Text style={[s.dlgLabel, { color: theme.ink }]}>Адрес (base URL)</Text>
+                <TextInput
+                  value={url}
+                  onChangeText={setUrl}
+                  placeholder="https://api.example.com/v1"
+                  placeholderTextColor={theme.faint}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  keyboardType="url"
+                  style={[s.dlgInput, { color: theme.ink, borderColor: theme.bd, backgroundColor: theme.bg }]}
+                />
+              </>
+            ) : null}
+
+            <Text style={[s.dlgLabel, { color: theme.ink }]}>{custom ? "Ключ API" : `Ключ API ${name}`}</Text>
+            <TextInput
+              value={key}
+              onChangeText={setKey}
+              placeholder="Ключ API"
+              placeholderTextColor={theme.faint}
+              secureTextEntry
+              autoCapitalize="none"
+              autoCorrect={false}
+              style={[s.dlgInput, { color: theme.ink, borderColor: theme.bd, backgroundColor: theme.bg }]}
+            />
+
+            {configure || custom ? (
+              <>
+                <View style={s.dlgLabelRow}>
+                  <Text style={[s.dlgLabel, { color: theme.ink, marginTop: 0 }]}>Модель</Text>
+                  {configure ? (
+                    <Pressable onPress={fetchModels} hitSlop={8} disabled={!key.trim() || loading}>
+                      <Text style={{ fontSize: 12, color: key.trim() ? theme.acc : theme.faint }}>
+                        {loading ? "Загрузка…" : "Загрузить список"}
+                      </Text>
+                    </Pressable>
+                  ) : null}
+                </View>
+                <TextInput
+                  value={model}
+                  onChangeText={setModel}
+                  placeholder={preset?.model || "model-id"}
+                  placeholderTextColor={theme.faint}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  style={[s.dlgInput, { color: theme.ink, borderColor: theme.bd, backgroundColor: theme.bg }]}
+                />
+                {list ? (
+                  list.length ? (
+                    <View style={[s.modelList, { borderColor: theme.bdSoft }]}>
+                      <ScrollView style={{ maxHeight: 180 }} nestedScrollEnabled keyboardShouldPersistTaps="handled">
+                        {list.map((m) => (
+                          <Pressable
+                            key={m}
+                            onPress={() => {
+                              setModel(m);
+                              setList(null);
+                            }}
+                            style={({ pressed }) => [s.modelItem, { backgroundColor: pressed ? theme.l2 : "transparent" }]}
+                          >
+                            <Text style={{ fontSize: 12, color: m === model ? theme.acc : theme.ink, flex: 1 }} numberOfLines={1}>
+                              {m}
+                            </Text>
+                            {m === model ? <Icon name="check" size={12} color={theme.acc} /> : null}
+                          </Pressable>
+                        ))}
+                      </ScrollView>
+                    </View>
+                  ) : (
+                    <Text style={{ fontSize: 11.5, color: theme.warn, marginTop: 8 }}>
+                      Провайдер не отдал список моделей — введите идентификатор вручную.
+                    </Text>
+                  )
+                ) : null}
+              </>
+            ) : null}
+
+            {err ? <Text style={{ fontSize: 12, color: theme.err, marginTop: 10 }}>{err}</Text> : null}
+
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginTop: 18 }}>
+              <Pressable onPress={submit} style={({ pressed }) => [s.btn, { backgroundColor: pressed ? theme.l3 : theme.sndOn }]}>
+                <Text style={{ fontSize: 12.5, color: "#ffffff", fontWeight: "600" }}>
+                  {custom ? "Добавить" : configure ? "Сохранить" : "Продолжить"}
+                </Text>
+              </Pressable>
+              {configure && !active ? (
+                <Pressable
+                  onPress={async () => {
+                    await store.saveProvider(id, { key: key.trim(), model: model.trim() || preset?.model || "" });
+                    store.setLocalPreset(id);
+                    onClose();
+                  }}
+                  style={({ pressed }) => [s.btn, s.btnGhost, { borderColor: theme.bd, backgroundColor: pressed ? theme.l2 : "transparent" }]}
+                >
+                  <Text style={{ fontSize: 12.5, color: theme.ink }}>Использовать</Text>
+                </Pressable>
+              ) : null}
+            </View>
+          </ScrollView>
+        </View>
+      </KeyboardAvoidingView>
+    </Modal>
+  );
+}
+
+function ModelsSection({ theme }: { theme: Theme }) {
+  const store = useStore();
+  const cur = store.models.find((p) => p.id === store.providerId)?.models.find((m) => m.id === store.modelId);
+  return (
+    <Card theme={theme}>
+      <Row theme={theme}>
+        <View style={s.rowText}>
+          <Text style={{ fontSize: 13.5, color: theme.ink, fontWeight: "600" }}>Выбранная модель</Text>
+          <Text style={{ fontSize: 12, color: theme.muted, marginTop: 2 }}>{cur?.name || "не выбрана"}</Text>
+        </View>
+        {cur ? <BrandIcon providerID={store.providerId || ""} size={18} color={theme.muted} /> : null}
+      </Row>
+      <Row theme={theme} last>
+        <View style={s.rowText}>
+          <Text style={{ fontSize: 13.5, color: theme.ink, fontWeight: "600" }}>Размышления</Text>
+          <Text style={{ fontSize: 12, color: theme.muted, marginTop: 2 }}>{variantName(store.variant)}</Text>
+        </View>
+      </Row>
+    </Card>
+  );
+}
+
+const s = StyleSheet.create({
+  window: { position: "absolute", top: 0, bottom: 0, left: 0, right: 0 },
+  head: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingHorizontal: 14,
+    paddingTop: 52,
+    paddingBottom: 12,
+  },
+  backBtn: { width: 34, height: 34, borderRadius: 17, alignItems: "center", justifyContent: "center" },
+  iconBtn: { width: 30, height: 30, borderRadius: 9, alignItems: "center", justifyContent: "center" },
+  groupTitle: {
+    fontSize: 12,
+    marginTop: 22,
+    marginBottom: 8,
+    paddingHorizontal: 4,
+  },
+  navCard: { borderRadius: 12, overflow: "hidden" },
+  navRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 15,
+  },
+  wideBtn: {
+    marginTop: 16,
+    height: 44,
+    borderRadius: 9,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  value: {
+    alignSelf: "flex-start",
+    fontSize: 12.5,
+    marginTop: 8,
+    borderRadius: 7,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    overflow: "hidden",
+  },
+  card: { borderRadius: 10, borderWidth: 1, paddingHorizontal: 14 },
+  row: { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 13 },
+  rowText: { flex: 1, minWidth: 0 },
+
+  sectionTitle: { fontSize: 13, fontWeight: "600", marginTop: 22, marginBottom: 9 },
+  fieldLabel: { fontSize: 11, letterSpacing: 0.3, textTransform: "uppercase", marginBottom: 4 },
+  search: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    height: 36,
+    borderRadius: 8,
+    borderWidth: 1,
+    paddingHorizontal: 10,
+    marginBottom: 10,
+  },
+  listCard: { borderRadius: 10, borderWidth: 1, overflow: "hidden" },
+  listRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 9,
+    paddingHorizontal: 13,
+    paddingVertical: 13,
+  },
+  tag: {
+    fontSize: 10.5,
+    borderRadius: 5,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    overflow: "hidden",
+  },
+  pitchRow: { paddingHorizontal: 13, paddingVertical: 12 },
+  dot: { width: 7, height: 7, borderRadius: 4 },
+  connectBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    borderWidth: 1,
+    borderRadius: 7,
+    paddingHorizontal: 11,
+    paddingVertical: 8,
+  },
+
+  dlgScrim: { flex: 1, alignItems: "center", justifyContent: "center", padding: 16 },
+  dlg: { width: "100%", maxHeight: "86%", borderRadius: 12, borderWidth: 1 },
+  dlgHead: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 10,
+    paddingTop: 10,
+    paddingBottom: 4,
+  },
+  dlgLabel: { fontSize: 12.5, fontWeight: "600", marginTop: 16, marginBottom: 6 },
+  dlgLabelRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 16, marginBottom: 6 },
+  dlgInput: {
+    height: 40,
+    borderRadius: 7,
+    borderWidth: 1,
+    paddingHorizontal: 11,
+    fontSize: 13,
+  },
+
+  modelList: { borderWidth: 1, borderRadius: 7, marginTop: 8, overflow: "hidden" },
+  modelItem: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 10, paddingVertical: 9 },
+
+  btn: { paddingHorizontal: 15, paddingVertical: 10, borderRadius: 7 },
+  btnGhost: { borderWidth: 1 },
+  textInput: {
+    height: 38,
+    borderRadius: 7,
+    borderWidth: 1,
+    paddingHorizontal: 10,
+    fontSize: 12.5,
+    marginTop: 5,
+  },
+});
