@@ -1,3 +1,5 @@
+![OpenCode Mobile](docs/cover.png)
+
 # OpenCode Mobile
 
 An Android client for [opencode](https://opencode.ai). It works two ways:
