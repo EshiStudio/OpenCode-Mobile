@@ -11,6 +11,7 @@ import {
   View,
 } from "react-native";
 import { BrandIcon, Icon } from "./icons";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useKeyboardOffset, useKeyboardVisible } from "./keyboard";
 import { Attachment } from "./store";
 import { humanSize } from "./media";
@@ -70,11 +71,15 @@ export function Composer({
   const kbOffset = useKeyboardOffset();
   // The project and branch row is context, not something you need mid-sentence.
   const typing = useKeyboardVisible();
+  // Nothing else in the app reserves the gesture bar, so the composer sat right
+  // on top of it. With the keyboard up the bar is covered anyway, so the inset
+  // only applies at rest.
+  const insets = useSafeAreaInsets();
   const send = usePressScale(0.88);
 
   return (
     <Animated.View style={{ paddingBottom: kbOffset }}>
-      <View style={{ paddingHorizontal: 16, paddingBottom: 10 }}>
+      <View style={{ paddingHorizontal: 16, paddingBottom: 10 + (typing ? 0 : insets.bottom) }}>
         {attachments.length ? (
           <ScrollView
             horizontal
