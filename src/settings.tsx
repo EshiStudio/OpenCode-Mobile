@@ -5,7 +5,6 @@ import {
   KeyboardAvoidingView,
   Linking,
   Modal,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -33,8 +32,11 @@ function pageTitle(p: Page): string {
   return t("settings." + p);
 }
 
-/** Android resizes the window for the keyboard already; only iOS needs padding. */
-const AVOID = Platform.OS === "ios" ? "padding" : undefined;
+/**
+ * Edge-to-edge windows are never resized for the keyboard, so both platforms
+ * have to pad. See src/keyboard.ts.
+ */
+const AVOID = "padding" as const;
 
 export function SettingsScreen({
   theme,
@@ -66,6 +68,15 @@ export function SettingsScreen({
     }
   }, [open, tx, off]);
 
+  // Pages swap in place, so without this a push reads as a flicker. The new
+  // page slides in from the side it came from: forward from the right, back
+  // from the left.
+  const pageSlide = React.useRef(new Animated.Value(0)).current;
+  React.useEffect(() => {
+    pageSlide.setValue(page === "root" ? -26 : 26);
+    Animated.timing(pageSlide, { toValue: 0, duration: 190, useNativeDriver: true }).start();
+  }, [page, pageSlide]);
+
   const back = () => (page === "root" ? onClose() : setPage("root"));
 
   return (
@@ -92,6 +103,12 @@ export function SettingsScreen({
             keyboardShouldPersistTaps="handled"
             keyboardDismissMode="on-drag"
           >
+            <Animated.View
+              style={{
+                transform: [{ translateX: pageSlide }],
+                opacity: pageSlide.interpolate({ inputRange: [-26, 0, 26], outputRange: [0, 1, 0] }),
+              }}
+            >
             {page === "root" ? <RootPage theme={theme} dark={dark} lang={lang} go={setPage} /> : null}
             {page === "basic" ? <BasicSection theme={theme} /> : null}
             {page === "appearance" ? <AppearanceSection theme={theme} dark={dark} setDark={setDark} /> : null}
@@ -101,6 +118,7 @@ export function SettingsScreen({
             {page === "clouds" ? <CloudsSection theme={theme} /> : null}
             {page === "server" ? <ServerSection theme={theme} /> : null}
             {page === "about" ? <AboutSection theme={theme} /> : null}
+            </Animated.View>
           </ScrollView>
         </KeyboardAvoidingView>
       </Animated.View>
@@ -872,7 +890,7 @@ function ProviderDialog({ theme, dialog, onClose }: { theme: Theme; dialog: Dial
   return (
     <Modal visible transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent>
       <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        behavior="padding"
         style={[s.dlgScrim, { backgroundColor: theme.scrim }]}
       >
         <View style={[s.dlg, { backgroundColor: theme.bg, borderColor: theme.bdSoft }]}>

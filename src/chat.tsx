@@ -18,6 +18,7 @@ import { Theme } from "./theme";
 import { sessionTitle, variantName } from "./store";
 import { MessageView, PendingShim } from "./message";
 import { BottomSheet, RowList, SheetRow } from "./sheet";
+import { useDrawerSwipe } from "./swipe";
 import { SessionsPanel } from "./panel";
 import { SettingsScreen } from "./settings";
 import { Composer } from "./composer";
@@ -26,7 +27,6 @@ import { catalogModels, presetName } from "./local-ai";
 import { CLOUD_IDS, cloudName } from "./clouds";
 import { Lang, t } from "./i18n";
 import { ProviderPreset } from "./storage";
-import { BrandIcon } from "./icons";
 import { PermissionRequest, ProviderWithModels, SessionInfo, StoredMessage } from "./types";
 
 export function ChatScreen({
@@ -44,6 +44,11 @@ export function ChatScreen({
 }) {
   const store = useStore();
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const drawerSwipe = useDrawerSwipe({
+    open: drawerOpen,
+    onOpen: () => setDrawerOpen(true),
+    onClose: () => setDrawerOpen(false),
+  });
   const [helpOpen, setHelpOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [sheet, setSheet] = useState<null | "model" | "effort" | "attach" | "project" | "branch" | "settings" | "more" | "filePick">(null);
@@ -132,7 +137,7 @@ export function ChatScreen({
     : t("chat.pickProject");
 
   return (
-    <View style={[styles.root, { backgroundColor: theme.bg }]}>
+    <View style={[styles.root, { backgroundColor: theme.bg }]} {...drawerSwipe.panHandlers}>
       {localMode && store.error ? (
         <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginHorizontal: 12, marginBottom: 6, padding: 9, borderRadius: 8, backgroundColor: theme.errBg }}>
           <Icon name="warning" size={14} color={theme.err} />
@@ -607,7 +612,7 @@ function localModelRows(
         name: id,
         groupOf: label,
         selected: p.id === presetID && id === modelID,
-        lead: <BrandIcon providerID={p.id} size={20} color="#9a9a9a" />,
+        brand: { id: p.id },
       });
     }
   }
@@ -624,7 +629,7 @@ function modelRows(models: ProviderWithModels[], providerID: string | null, mode
       badge: m.free ? t("chat.free") : undefined,
       groupOf: p.name,
       selected: m.id === modelID && p.id === providerID,
-      lead: <BrandIcon providerID={p.id} size={20} color="#9a9a9a" />,
+      brand: { id: p.id },
     }));
     rows.push(...names);
   }
@@ -663,7 +668,7 @@ function storageRows(
       name: cloudName(id),
       desc: roots[id] || "opencode",
       selected: picked === id,
-      lead: <BrandIcon providerID={id} size={20} colored />,
+      brand: { id, colored: true },
     });
   }
   return rows;

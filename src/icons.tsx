@@ -1,6 +1,6 @@
 import React from "react";
 import { Text, View } from "react-native";
-import { Defs, G, LinearGradient, Mask, Path, Stop, Svg } from "react-native-svg";
+import { Defs, G, LinearGradient, Mask, Path, Stop, Svg, SvgXml } from "react-native-svg";
 
 type IconDef = { viewBox: string; paths: Array<{ d: string; fill?: boolean; stroke?: boolean }> };
 
@@ -224,6 +224,20 @@ export function DriveIcon({ size = 16 }: { size?: number }) {
   );
 }
 
+/**
+ * The generated logo table is ~500KB of SVG markup for 182 providers. A static
+ * import would build that object during startup, before the first frame, on
+ * every launch — for a table most screens never touch. Requiring it on first
+ * use moves that cost to the first brand mark that actually needs one.
+ */
+let generatedBrands: Record<string, string> | null = null;
+function brandXml(providerID: string): string | undefined {
+  if (!generatedBrands) {
+    generatedBrands = require("./brands.generated").GENERATED_BRANDS as Record<string, string>;
+  }
+  return generatedBrands[providerID];
+}
+
 export function BrandIcon({
   providerID,
   size = 13,
@@ -237,7 +251,14 @@ export function BrandIcon({
 }) {
   const b = BRANDS[providerID];
   if (!b) {
-    // No brand mark on file: a lettermark reads far better than a generic glyph.
+    // Every provider models.dev knows about ships a logo; most are monochrome
+    // and honour `color` through currentColor. Hand-drawn marks above win, so
+    // the ones tuned for this UI keep their tuning.
+    const xml = brandXml(providerID);
+    if (xml) {
+      return <SvgXml xml={xml} width={size} height={size} color={color} />;
+    }
+    // Nothing on file at all: a lettermark reads far better than a generic glyph.
     const letter = (providerID || "?").replace(/^custom_/, "").trim().charAt(0).toUpperCase() || "?";
     return (
       <View

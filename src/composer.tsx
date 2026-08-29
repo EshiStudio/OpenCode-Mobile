@@ -1,9 +1,8 @@
 import React, { useRef } from "react";
 import { t } from "./i18n";
 import {
+  Animated,
   Image,
-  KeyboardAvoidingView,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -12,18 +11,12 @@ import {
   View,
 } from "react-native";
 import { BrandIcon, Icon } from "./icons";
+import { useKeyboardOffset } from "./keyboard";
 import { Attachment } from "./store";
 import { humanSize } from "./media";
 import { Theme } from "./theme";
-import { Avatar } from "./ui";
+import { Avatar, usePressScale } from "./ui";
 import { variantName } from "./store";
-
-/**
- * The window already resizes for the keyboard (`adjustResize` in the manifest),
- * so padding it a second time on Android squeezed the input as soon as the
- * keyboard appeared. Only iOS needs the avoiding view.
- */
-const AVOID = Platform.OS === "ios" ? "padding" : undefined;
 
 /** One line of text plus the input's own padding — keeps the box from jumping. */
 const INPUT_MIN_HEIGHT = 42;
@@ -74,9 +67,11 @@ export function Composer({
   onRemoveAttach: (index: number) => void;
 }) {
   const inputRef = useRef<TextInput>(null);
+  const kbOffset = useKeyboardOffset();
+  const send = usePressScale(0.88);
 
   return (
-    <KeyboardAvoidingView behavior={AVOID} keyboardVerticalOffset={0}>
+    <Animated.View style={{ paddingBottom: kbOffset }}>
       <View style={{ paddingHorizontal: 16, paddingBottom: 10 }}>
         {attachments.length ? (
           <ScrollView
@@ -138,20 +133,21 @@ export function Composer({
                 <Icon name="stop" size={16} color="#ffffff" />
               </Pressable>
             ) : (
-              <Pressable
-                onPress={onSend}
-                disabled={!canSend}
-                style={{
-                  width: 28,
-                  height: 28,
-                  borderRadius: 6,
-                  alignItems: "center",
-                  justifyContent: "center",
-                  backgroundColor: canSend ? theme.sndOn : theme.sndOff,
-                  opacity: canSend ? 1 : 0.7,
-                }}
-              >
-                <Icon name="arrow-up" size={16} color={canSend ? "#ffffff" : theme.muted} />
+              <Pressable onPress={onSend} disabled={!canSend} {...send.handlers}>
+                <Animated.View
+                  style={{
+                    width: 28,
+                    height: 28,
+                    borderRadius: 6,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    backgroundColor: canSend ? theme.sndOn : theme.sndOff,
+                    opacity: canSend ? 1 : 0.7,
+                    transform: [{ scale: send.scale }],
+                  }}
+                >
+                  <Icon name="arrow-up" size={16} color={canSend ? "#ffffff" : theme.muted} />
+                </Animated.View>
               </Pressable>
             )}
           </View>
@@ -181,7 +177,7 @@ export function Composer({
           ) : null}
         </View>
       </View>
-    </KeyboardAvoidingView>
+    </Animated.View>
   );
 }
 

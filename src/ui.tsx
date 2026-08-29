@@ -1,10 +1,29 @@
 import React from "react";
-import { ActivityIndicator, Pressable, StyleSheet, Text, View, ViewStyle } from "react-native";
+import { ActivityIndicator, Animated, Pressable, StyleSheet, Text, View, ViewStyle } from "react-native";
 import { BrandIcon, Icon, IconName } from "./icons";
 import { Theme } from "./theme";
 
 export const tiny = { fontFamily: "monospace" } as const;
 export const mono = { fontFamily: "monospace" } as const;
+
+/**
+ * Press feedback that a colour swap alone does not give: the control dips
+ * under the finger and springs back. Native-driven, so it stays smooth even
+ * while the JS thread is busy building a list.
+ */
+export function usePressScale(to = 0.92) {
+  const scale = React.useRef(new Animated.Value(1)).current;
+  const handlers = React.useMemo(
+    () => ({
+      onPressIn: () =>
+        Animated.spring(scale, { toValue: to, useNativeDriver: true, speed: 40, bounciness: 0 }).start(),
+      onPressOut: () =>
+        Animated.spring(scale, { toValue: 1, useNativeDriver: true, speed: 30, bounciness: 8 }).start(),
+    }),
+    [scale, to],
+  );
+  return { scale, handlers };
+}
 
 export function IconButton({
   theme,
@@ -23,10 +42,12 @@ export function IconButton({
   style?: ViewStyle;
   color?: string;
 }) {
+  const { scale, handlers } = usePressScale();
   return (
     <Pressable
       accessibilityLabel={label}
       onPress={onPress}
+      {...handlers}
       style={({ pressed }) => [
         {
           width: 34,
@@ -39,7 +60,9 @@ export function IconButton({
         style,
       ]}
     >
-      <Icon name={name} size={size} color={color || theme.muted} />
+      <Animated.View style={{ transform: [{ scale }] }}>
+        <Icon name={name} size={size} color={color || theme.muted} />
+      </Animated.View>
     </Pressable>
   );
 }

@@ -43,10 +43,18 @@ export function Drawer({
   ];
 
   return (
-    <View style={[StyleSheet.absoluteFill, { zIndex: 25, opacity: open ? 1 : 0, pointerEvents: open ? "auto" : "none" } as never]}>
-      <View style={[s.scrim, { backgroundColor: theme.scrim }]}>
+    <View style={[StyleSheet.absoluteFill, { zIndex: 25, pointerEvents: open ? "auto" : "none" } as never]}>
+      <Animated.View
+        style={[
+          s.scrim,
+          {
+            backgroundColor: theme.scrim,
+            opacity: tx.interpolate({ inputRange: [-340, 0], outputRange: [0, 1] }),
+          },
+        ]}
+      >
         <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
-      </View>
+      </Animated.View>
       <Animated.View
         style={[
           s.drawer,

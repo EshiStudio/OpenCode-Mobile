@@ -5,6 +5,7 @@ import { Icon } from "./icons";
 import { Theme } from "./theme";
 import { useStore } from "./store";
 import { SessionInfo } from "./types";
+import { useDrawerSwipe } from "./swipe";
 
 function baseName(dir?: string): string {
   if (!dir) return "";
@@ -40,6 +41,9 @@ export function SessionsPanel({
   const [query, setQuery] = useState("");
   const [confirm, setConfirm] = useState<string | null>(null);
   const tx = React.useRef(new Animated.Value(-500)).current;
+  // Swiping the open panel back to the left closes it; the chat screen behind
+  // never sees these touches, so it carries its own responder for opening.
+  const swipe = useDrawerSwipe({ open, onOpen: () => {}, onClose });
 
   useEffect(() => {
     Animated.timing(tx, { toValue: open ? 0 : -500, duration: 220, useNativeDriver: true }).start();
@@ -74,17 +78,27 @@ export function SessionsPanel({
     <View
       style={[
         StyleSheet.absoluteFill,
-        { zIndex: 40, opacity: open ? 1 : 0, pointerEvents: open ? "auto" : "none" } as never,
+        { zIndex: 40, pointerEvents: open ? "auto" : "none" } as never,
       ]}
     >
-      <View style={[s.scrim, { backgroundColor: theme.scrim }]}>
+      {/* Tied to the slide so the dim fades with the panel instead of blinking. */}
+      <Animated.View
+        style={[
+          s.scrim,
+          {
+            backgroundColor: theme.scrim,
+            opacity: tx.interpolate({ inputRange: [-500, 0], outputRange: [0, 1] }),
+          },
+        ]}
+      >
         <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
-      </View>
+      </Animated.View>
       <Animated.View
         style={[
           s.panel,
           { backgroundColor: theme.bg, borderRightColor: theme.bd, transform: [{ translateX: tx }] },
         ]}
+        {...swipe.panHandlers}
       >
         <View style={[s.head, { paddingTop: 66 }]}>
           <Text style={{ fontSize: 14, fontWeight: "600", color: theme.ink }}>{t("sessions.title")}</Text>

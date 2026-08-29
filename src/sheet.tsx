@@ -1,16 +1,17 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useDeferredValue, useEffect, useMemo, useState } from "react";
 import { t } from "./i18n";
 import {
   Animated,
+  FlatList,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from "react-native";
-import { Icon } from "./icons";
+import { BrandIcon, Icon } from "./icons";
 import { Theme } from "./theme";
+import { usePressScale } from "./ui";
 
 export type SheetRow = {
   id: string;
@@ -21,7 +22,19 @@ export type SheetRow = {
   groupOf?: string;
   selected?: boolean;
   lead?: React.ReactNode;
+  /**
+   * Brand mark to draw at the head of the row. Prefer this over `lead` for
+   * long lists: `lead` forces the caller to build an element per row up front,
+   * which is what made the model sheet stall on providers with hundreds of
+   * models. This is plain data, so the icon is only built for visible rows.
+   */
+  brand?: { id: string; colored?: boolean };
 };
+
+/** A group heading or a row — the flat shape the list is virtualized over. */
+type Item =
+  | { kind: "group"; key: string; label: string }
+  | { kind: "row"; key: string; row: SheetRow };
 
 export function BottomSheet({
   theme,
@@ -36,9 +49,19 @@ export function BottomSheet({
   onClose: () => void;
   children: React.ReactNode;
 }) {
-  const [ty, setTy] = useState(new Animated.Value(0));
+  const [ty] = useState(() => new Animated.Value(1));
+  // Children stay mounted until the sheet has finished sliding away, so the
+  // closing animation is not an empty box; unmounting after also drops the
+  // list, which is what keeps a long model list out of memory when closed.
+  const [mounted, setMounted] = useState(open);
+
   useEffect(() => {
-    Animated.timing(ty, { toValue: open ? 0 : 1, duration: 200, useNativeDriver: true }).start();
+    if (open) setMounted(true);
+    Animated.timing(ty, { toValue: open ? 0 : 1, duration: 200, useNativeDriver: true }).start(
+      ({ finished }) => {
+        if (finished && !open) setMounted(false);
+      },
+    );
   }, [open, ty]);
 
   const translateY = ty.interpolate({ inputRange: [0, 1], outputRange: [0, 620] });
@@ -47,10 +70,15 @@ export function BottomSheet({
     <View
       style={[
         StyleSheet.absoluteFill,
-        { zIndex: 30, opacity: open ? 1 : 0, pointerEvents: open ? "auto" : "none" } as never,
+        { zIndex: 30, pointerEvents: open ? "auto" : "none" } as never,
       ]}
     >
-      <Animated.View style={[s.scrim, { backgroundColor: theme.scrim }]}>
+      <Animated.View
+        style={[
+          s.scrim,
+          { backgroundColor: theme.scrim, opacity: ty.interpolate({ inputRange: [0, 1], outputRange: [1, 0] }) },
+        ]}
+      >
         <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
       </Animated.View>
       <Animated.View
@@ -60,17 +88,69 @@ export function BottomSheet({
             backgroundColor: theme.bg,
             borderTopColor: theme.bd,
             transform: [{ translateY }],
-            opacity: open ? 1 : 0,
           },
         ]}
       >
         <View style={{ width: 34, height: 4, borderRadius: 2, backgroundColor: theme.l3, alignSelf: "center", marginTop: 8, marginBottom: 6 }} />
         {title ? <Text style={[s.title, { color: theme.faint }]}>{title}</Text> : null}
-        {open ? children : null}
+        {mounted ? children : null}
       </Animated.View>
     </View>
   );
 }
+
+/** One row. Memoized so scrolling a long list does not re-render every sibling. */
+const Row = React.memo(function Row({
+  theme,
+  row,
+  onPick,
+}: {
+  theme: Theme;
+  row: SheetRow;
+  onPick: (row: SheetRow) => void;
+}) {
+  const { scale, handlers } = usePressScale(0.97);
+  const lead =
+    row.lead ||
+    (row.brand ? (
+      <BrandIcon providerID={row.brand.id} size={20} colored={row.brand.colored} color="#9a9a9a" />
+    ) : row.icon ? (
+      <Icon name={(row.icon as never) ?? "plus"} size={20} color={theme.muted} />
+    ) : (
+      <View style={{ width: 20 }} />
+    ));
+
+  return (
+    <Pressable
+      onPress={() => onPick(row)}
+      {...handlers}
+      style={({ pressed }) => ({
+        borderRadius: 8,
+        backgroundColor: pressed ? theme.l2 : "transparent",
+      })}
+    >
+      {/* The scale lives on an inner view: an animated Pressable ignores the
+          function form of `style`, which silently drops the row layout. */}
+      <Animated.View style={[s.row, { transform: [{ scale }] }]}>
+      {lead}
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <Text style={[s.rowTitle, { color: row.selected ? theme.acc : theme.ink }]} numberOfLines={1}>
+          {row.name}
+        </Text>
+        {row.desc ? (
+          <Text style={s.rowDesc} numberOfLines={1}>
+            {row.desc}
+          </Text>
+        ) : null}
+      </View>
+      {row.badge ? (
+        <Text style={[s.badge, { color: theme.muted, backgroundColor: theme.l2 }]}>{row.badge}</Text>
+      ) : null}
+      <View style={{ width: 20 }}>{row.selected ? <Icon name="check" size={14} color={theme.acc} /> : null}</View>
+      </Animated.View>
+    </Pressable>
+  );
+});
 
 export function RowList({
   theme,
@@ -90,66 +170,33 @@ export function RowList({
   footer?: React.ReactNode;
 }) {
   const [q, setQ] = useState("");
-  const [scrollRef, setScrollRef] = useState<ScrollView | null>(null);
-  const filtered = q.trim()
-    ? rows.filter((r) => r.name.toLowerCase().includes(q.trim().toLowerCase()))
-    : rows;
+  // Typing stays responsive while a 6000-row list re-filters behind it.
+  const query = useDeferredValue(q);
 
-  let lastGroup: string | null = null;
-  const sections: React.ReactNode[] = [];
-
-  filtered.forEach((r) => {
-    if (r.groupOf && r.groupOf !== lastGroup) {
-      lastGroup = r.groupOf;
-      sections.push(
-        <Text key={"g" + r.groupOf} style={[s.group, { color: theme.faint }]}>
-          {r.groupOf.toUpperCase()}
-        </Text>,
-      );
+  const items = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    const out: Item[] = [];
+    let lastGroup: string | null = null;
+    for (const r of rows) {
+      if (needle && !r.name.toLowerCase().includes(needle)) continue;
+      if (r.groupOf && r.groupOf !== lastGroup) {
+        lastGroup = r.groupOf;
+        out.push({ kind: "group", key: "g:" + r.groupOf, label: r.groupOf.toUpperCase() });
+      }
+      out.push({ kind: "row", key: r.id, row: r });
     }
-    sections.push(
-      <Pressable
-        key={r.id}
-        onPress={() => onPick(r)}
-        style={({ pressed }) => [
-          s.row,
-          { backgroundColor: pressed ? theme.l2 : "transparent" },
-        ]}
-      >
-        {r.lead || (r.icon ? <Icon name={(r.icon as never) ?? "plus"} size={20} color={theme.muted} /> : <View style={{ width: 20 }} />)}
-        <View style={{ flex: 1, minWidth: 0 }}>
-          <Text
-            style={[
-              s.rowTitle,
-              { color: r.selected ? theme.acc : theme.ink },
-            ]}
-            numberOfLines={1}
-          >
-            {r.name}
-          </Text>
-          {r.desc ? (
-            <Text style={s.rowDesc} numberOfLines={1}>
-              {r.desc}
-            </Text>
-          ) : null}
-        </View>
-        {r.badge ? (
-          <Text style={[s.badge, { color: theme.muted, backgroundColor: theme.l2 }]}>{r.badge}</Text>
-        ) : null}
-        <View style={{ width: 20 }}>
-          {r.selected ? <Icon name="check" size={14} color={theme.acc} /> : null}
-        </View>
-      </Pressable>,
-    );
-  });
+    return out;
+  }, [rows, query]);
 
-  if (!sections.length) {
-    sections.push(
-      <Text key="empty" style={{ textAlign: "center", color: theme.faint, padding: 22, fontSize: 13 }}>
-        {emptyText}
-      </Text>,
-    );
-  }
+  const renderItem = useCallback(
+    ({ item }: { item: Item }) =>
+      item.kind === "group" ? (
+        <Text style={[s.group, { color: theme.faint }]}>{item.label}</Text>
+      ) : (
+        <Row theme={theme} row={item.row} onPick={onPick} />
+      ),
+    [theme, onPick],
+  );
 
   return (
     <View style={{ flexShrink: 1, minHeight: 0 }}>
@@ -166,15 +213,27 @@ export function RowList({
           />
         </View>
       ) : null}
-      <ScrollView
-        ref={setScrollRef}
+      <FlatList
+        data={items}
+        keyExtractor={(item) => item.key}
+        renderItem={renderItem}
         keyboardShouldPersistTaps="handled"
         style={{ flexGrow: 0, flexShrink: 1 }}
         contentContainerStyle={{ paddingHorizontal: 8, paddingBottom: 12 }}
-      >
-        {sections}
-      </ScrollView>
-      {footer ? <View style={{ borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.bdSoft, marginTop: 8 }}>{footer}</View> : null}
+        // Only a screenful is mounted on open; the rest streams in as it scrolls.
+        initialNumToRender={12}
+        maxToRenderPerBatch={12}
+        windowSize={7}
+        removeClippedSubviews
+        ListEmptyComponent={
+          <Text style={{ textAlign: "center", color: theme.faint, padding: 22, fontSize: 13 }}>{emptyText}</Text>
+        }
+      />
+      {footer ? (
+        <View style={{ borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.bdSoft, marginTop: 8 }}>
+          {footer}
+        </View>
+      ) : null}
     </View>
   );
 }
