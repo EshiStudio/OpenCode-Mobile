@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from "react";
 import { View, Text, Pressable, ActivityIndicator, Platform, Linking, Alert, Modal, StyleSheet } from "react-native";
-import * as Application from "expo-application";
 import * as FileSystem from "expo-file-system/legacy";
 import * as IntentLauncher from "expo-intent-launcher";
 import { Theme } from "./theme";
+import { APP_VERSION, isNewer } from "./update";
 
 // TODO: Замените на ваш репозиторий (например: "owner/opencode-mobile")
 const GITHUB_REPO = "EshiStudio/OpenCode-Mobile";
@@ -21,9 +21,11 @@ export function UpdateOverlay({ theme }: { theme: Theme }) {
         const data = await res.json();
         
         const latestVersion = data.tag_name.replace(/^v/, "");
-        const currentVersion = Application.nativeApplicationVersion || "1.0.0";
-        
-        if (latestVersion !== currentVersion && data.tag_name) {
+
+        // Must be strictly newer. Comparing for inequality also fires when the
+        // installed build is ahead of the latest tag, which pins the user under
+        // a modal asking them to "update" to an older version.
+        if (data.tag_name && APP_VERSION && isNewer(latestVersion, APP_VERSION)) {
           const apkAsset = data.assets.find((a: any) => a.name.endsWith(".apk"));
           setUpdateInfo({
             version: data.tag_name,

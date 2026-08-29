@@ -19,7 +19,7 @@ Notifications.setNotificationHandler({
 TaskManager.defineTask(BACKGROUND_UPDATE_TASK, async () => {
   try {
     const rel = await fetchLatest("EshiStudio/OpenCode-Mobile");
-    if (isNewer(APP_VERSION, rel.version)) {
+    if (isNewer(rel.version, APP_VERSION)) {
       // Send a local notification
       await Notifications.scheduleNotificationAsync({
         content: {

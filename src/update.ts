@@ -1,3 +1,4 @@
+import * as Application from "expo-application";
 import { fetch as expoFetch } from "expo/fetch";
 import { t } from "./i18n";
 
@@ -10,8 +11,19 @@ import { t } from "./i18n";
  * user to confirm the install — that step cannot be skipped for sideloaded apps.
  */
 
-/** Version of this build. Kept in step with `version` in app.json. */
-export const APP_VERSION = "1.3.3";
+/**
+ * Version of the running build, read from the native manifest rather than kept
+ * by hand. A hand-written constant drifts from the APK the moment a release is
+ * cut from a stale build, and the app then offers an update to a version it is
+ * already running, forever.
+ *
+ * Empty only where there is no native manifest (web); the update check bails
+ * out in that case instead of comparing against a made-up version.
+ */
+export const APP_VERSION = Application.nativeApplicationVersion || "";
+
+/** Same, but safe to show in the UI. */
+export const APP_VERSION_LABEL = APP_VERSION || "unknown";
 
 export type Release = {
   version: string;
@@ -81,5 +93,6 @@ export async function fetchLatest(repoInput: string): Promise<Release> {
 export async function checkForUpdate(repo: string): Promise<Release | null> {
   const rel = await fetchLatest(repo);
   if (!rel.version) throw new Error(t("update.noTag"));
+  if (!APP_VERSION) return null;
   return isNewer(rel.version, APP_VERSION) ? rel : null;
 }

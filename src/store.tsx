@@ -50,7 +50,7 @@ import { t } from "./i18n";
 import { extractToken } from "./yandex";
 import { CloudId, CLOUD_IDS, cloudName, connect as cloudConnect } from "./clouds";
 import { OAuthCloud, refresh as oauthRefresh, signIn, stale } from "./oauth";
-import { APP_VERSION, checkForUpdate, Release } from "./update";
+import { APP_VERSION_LABEL, checkForUpdate, Release } from "./update";
 import { presetName } from "./local-ai";
 import {
   streamChat,
@@ -1217,7 +1217,7 @@ export function StoreProvider({
     signInCloud,
     updateRepo: state.updateRepo,
     update: state.update,
-    appVersion: APP_VERSION,
+    appVersion: APP_VERSION_LABEL,
     setUpdateRepo,
     checkUpdate,
     saveYandex,
