@@ -17,6 +17,7 @@
     },
     "android": {
       "package": "com.anonymous.opencodemobile",
+      "permissions": ["REQUEST_INSTALL_PACKAGES"],
       "predictiveBackGestureEnabled": false,
       "adaptiveIcon": {
         "foregroundImage": "./assets/android-icon-foreground.png",

@@ -7,6 +7,7 @@ import { StoreProvider, useStore } from "./src/store";
 import { makeTheme } from "./src/theme";
 import { Lang, setLocale, t } from "./src/i18n";
 import { ChatScreen } from "./src/chat";
+import { UpdateOverlay } from "./src/update";
 import {
   loadConnection,
   loadSaved,
@@ -176,6 +177,7 @@ export default function App() {
               onDisconnect={() => setConn(null)}
             />
           </StoreProvider>
+          <UpdateOverlay theme={theme} />
         </DeviceFrame>
       </ErrorBoundary>
     </SafeAreaProvider>
