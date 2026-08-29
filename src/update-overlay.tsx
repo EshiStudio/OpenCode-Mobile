@@ -1,9 +1,7 @@
 import React, { useEffect, useState } from "react";
-import { View, Text, Pressable, ActivityIndicator, Platform, Linking, Alert, Modal, StyleSheet } from "react-native";
-import * as FileSystem from "expo-file-system/legacy";
-import * as IntentLauncher from "expo-intent-launcher";
+import { View, Text, Pressable, ActivityIndicator, Platform, Modal, StyleSheet } from "react-native";
 import { Theme } from "./theme";
-import { APP_VERSION, isNewer } from "./update";
+import { APP_VERSION, installUpdate, isNewer } from "./update";
 
 // TODO: Замените на ваш репозиторий (например: "owner/opencode-mobile")
 const GITHUB_REPO = "EshiStudio/OpenCode-Mobile";
@@ -44,43 +42,15 @@ export function UpdateOverlay({ theme }: { theme: Theme }) {
   if (!updateInfo) return null;
 
   const handleUpdate = async () => {
-    if (Platform.OS === "android" && updateInfo.apkUrl) {
-      setDownloading(true);
-      try {
-        const fileUri = `${FileSystem.documentDirectory}update-${updateInfo.version}.apk`;
-        
-        const downloadResumable = FileSystem.createDownloadResumable(
-          updateInfo.apkUrl,
-          fileUri,
-          {},
-          (downloadProgress) => {
-            const pct = downloadProgress.totalBytesWritten / downloadProgress.totalBytesExpectedToWrite;
-            setProgress(pct);
-          }
-        );
-        
-        const result = await downloadResumable.downloadAsync();
-        
-        if (result && result.uri) {
-          const contentUri = await FileSystem.getContentUriAsync(result.uri);
-          
-          // FLAG_GRANT_READ_URI_PERMISSION (1) | FLAG_ACTIVITY_NEW_TASK (268435456)
-          await IntentLauncher.startActivityAsync("android.intent.action.VIEW", {
-            data: contentUri,
-            flags: 1 | 268435456, 
-            type: "application/vnd.android.package-archive",
-          });
-        }
-      } catch (err) {
-        Alert.alert("Ошибка", "Не удалось скачать или запустить обновление. Попробуйте скачать вручную.");
-        Linking.openURL(updateInfo.releaseUrl);
-      } finally {
-        setDownloading(false);
-        setProgress(0);
-      }
-    } else {
-      // iOS или если APK нет в релизе — просто открываем страницу GitHub
-      Linking.openURL(updateInfo.releaseUrl);
+    setDownloading(true);
+    try {
+      await installUpdate(
+        { apkUrl: updateInfo.apkUrl || "", pageUrl: updateInfo.releaseUrl, version: updateInfo.version },
+        setProgress,
+      );
+    } finally {
+      setDownloading(false);
+      setProgress(0);
     }
   };
 

@@ -4,7 +4,6 @@ import {
   FlatList,
   InteractionManager,
   Keyboard,
-  Linking,
   Platform,
   Pressable,
   StyleSheet,
@@ -20,6 +19,7 @@ import { sessionTitle, variantName } from "./store";
 import { MessageView, PendingShim } from "./message";
 import { BottomSheet, RowList, SheetRow } from "./sheet";
 import { useDrawerSwipe } from "./swipe";
+import { installUpdate } from "./update";
 import { SessionsPanel, visibleSessions } from "./panel";
 import { SettingsScreen } from "./settings";
 import { Composer } from "./composer";
@@ -188,6 +188,9 @@ export function ChatScreen({
         onNew={onNew}
         onMore={() => setSheet("more")}
         onPickSession={() => setSheet("sessions")}
+        onInstallUpdate={() => {
+          if (store.update) installUpdate(store.update).catch(() => {});
+        }}
       />
 
       <View style={{ flex: 1, minHeight: 0 }}>
@@ -562,6 +565,7 @@ function Header({
   onNew,
   onMore,
   onPickSession,
+  onInstallUpdate,
 }: {
   theme: Theme;
   title: string;
@@ -575,6 +579,7 @@ function Header({
   onMore: () => void;
   /** Long press on the title: jump straight to another session. */
   onPickSession: () => void;
+  onInstallUpdate: () => void;
 }) {
   return (
     <View style={[styles.header, { paddingTop: 6 }]}>
@@ -605,7 +610,7 @@ function Header({
       {update ? (
         <Pressable
           accessibilityLabel={t("chat.update", { version: update.version })}
-          onPress={() => Linking.openURL(update.apkUrl || update.pageUrl)}
+          onPress={onInstallUpdate}
           style={({ pressed }) => [styles.iconBtn, { backgroundColor: pressed ? theme.l3 : theme.l2 }]}
         >
           <Icon name="download" size={16} color={theme.acc} />

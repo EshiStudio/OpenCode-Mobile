@@ -1,4 +1,7 @@
 import * as Application from "expo-application";
+import * as FileSystem from "expo-file-system/legacy";
+import * as IntentLauncher from "expo-intent-launcher";
+import { Linking, Platform } from "react-native";
 import { fetch as expoFetch } from "expo/fetch";
 import { t } from "./i18n";
 
@@ -95,4 +98,48 @@ export async function checkForUpdate(repo: string): Promise<Release | null> {
   if (!rel.version) throw new Error(t("update.noTag"));
   if (!APP_VERSION) return null;
   return isNewer(rel.version, APP_VERSION) ? rel : null;
+}
+
+/**
+ * Downloads the release APK and hands it to the system installer.
+ *
+ * Opening the URL instead just sends the user to a browser and leaves them to
+ * find the file — which is what the header button and the settings button used
+ * to do. Android still shows its own install prompt; that step cannot be
+ * skipped for a sideloaded app.
+ *
+ * Falls back to opening the release page when there is no APK attached, on
+ * iOS, or if the download fails.
+ */
+export async function installUpdate(
+  rel: { apkUrl: string; pageUrl: string; version: string },
+  onProgress?: (fraction: number) => void,
+): Promise<void> {
+  const openPage = () => Linking.openURL(rel.pageUrl || rel.apkUrl).catch(() => {});
+
+  if (Platform.OS !== "android" || !rel.apkUrl) {
+    await openPage();
+    return;
+  }
+
+  try {
+    const target = `${FileSystem.documentDirectory}update-${rel.version}.apk`;
+    const task = FileSystem.createDownloadResumable(rel.apkUrl, target, {}, (p) => {
+      if (p.totalBytesExpectedToWrite > 0) {
+        onProgress?.(p.totalBytesWritten / p.totalBytesExpectedToWrite);
+      }
+    });
+    const done = await task.downloadAsync();
+    if (!done?.uri) throw new Error("no file");
+
+    const contentUri = await FileSystem.getContentUriAsync(done.uri);
+    await IntentLauncher.startActivityAsync("android.intent.action.VIEW", {
+      data: contentUri,
+      // FLAG_GRANT_READ_URI_PERMISSION | FLAG_ACTIVITY_NEW_TASK
+      flags: 1 | 268435456,
+      type: "application/vnd.android.package-archive",
+    });
+  } catch {
+    await openPage();
+  }
 }

@@ -3,7 +3,6 @@ import {
   Animated,
   Dimensions,
   KeyboardAvoidingView,
-  Linking,
   Modal,
   Pressable,
   ScrollView,
@@ -16,6 +15,7 @@ import {
 import { BrandIcon, DriveIcon, Icon, IconName } from "./icons";
 import { Theme } from "./theme";
 import { useStore, variantName } from "./store";
+import { installUpdate } from "./update";
 import { BUILTIN_IDS, FEATURED_IDS, catalogModels, presetDesc, presetName } from "./local-ai";
 import { ProviderPreset } from "./storage";
 import { CLOUD_IDS, CloudId, cloudHint, cloudName } from "./clouds";
@@ -315,6 +315,19 @@ function AboutSection({ theme }: { theme: Theme }) {
   const store = useStore();
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState("");
+  const [installing, setInstalling] = useState(false);
+  const [progress, setProgress] = useState(0);
+
+  const install = async () => {
+    if (!store.update) return;
+    setInstalling(true);
+    setProgress(0);
+    try {
+      await installUpdate(store.update, setProgress);
+    } finally {
+      setInstalling(false);
+    }
+  };
 
   const check = async () => {
     setBusy(true);
@@ -349,10 +362,15 @@ function AboutSection({ theme }: { theme: Theme }) {
       {note ? <Text style={{ fontSize: 12, color: theme.muted, marginTop: 10 }}>{note}</Text> : null}
       {store.update ? (
         <Pressable
-          onPress={() => Linking.openURL(store.update!.apkUrl || store.update!.pageUrl)}
+          onPress={install}
+          disabled={installing}
           style={({ pressed }) => [s.wideBtn, s.btnGhost, { borderColor: theme.bd, backgroundColor: pressed ? theme.l2 : "transparent" }]}
         >
-          <Text style={{ fontSize: 13.5, color: theme.acc }}>{t("settings.about.download", { version: store.update.version })}</Text>
+          <Text style={{ fontSize: 13.5, color: theme.acc }}>
+            {installing
+              ? t("update.downloading", { percent: Math.round(progress * 100) })
+              : t("settings.about.download", { version: store.update.version })}
+          </Text>
         </Pressable>
       ) : null}
     </>
