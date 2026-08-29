@@ -1,52 +1,78 @@
 import React, { useState } from "react";
+import * as Clipboard from "expo-clipboard";
 import { t } from "./i18n";
-import { Alert, Animated, Linking, Pressable, StyleSheet, Text, View } from "react-native";
+import { Animated, Pressable, StyleSheet, Text, View } from "react-native";
 import { Icon, IconName } from "./icons";
-import { downloadToDevice } from "./media";
 import { mono } from "./ui";
 import { Theme } from "./theme";
 import { Part, StoredMessage } from "./types";
+import { Markdown } from "./markdown";
 
-/** Splits on inline code first, then on links, so both survive in one pass. */
-const CHUNKS = /(`[^`]*`|https?:\/\/[^\s<>()"']+)/;
+/**
+ * The three things opencode offers on a message: put the prompt back in the
+ * composer, undo what it caused, and copy it.
+ */
+function UserActions({
+  theme,
+  text,
+  onCopied,
+  onRestore,
+  onRevert,
+}: {
+  theme: Theme;
+  text: string;
+  onCopied: () => void;
+  onRestore?: () => void;
+  onRevert?: () => void;
+}) {
+  const [copied, setCopied] = useState(false);
 
-/** Offers what a link is good for: opening it, or putting the file on the phone. */
-export function linkActions(url: string) {
-  Alert.alert(url.length > 60 ? url.slice(0, 60) + "…" : url, undefined, [
-    { text: t("common.open"), onPress: () => Linking.openURL(url).catch(() => {}) },
-    {
-      text: t("common.download"),
-      onPress: async () => {
-        const res = await downloadToDevice(url);
-        Alert.alert(res.saved ? t("message.saved") : t("message.notSaved"), res.saved ? undefined : res.reason);
-      },
-    },
-    { text: t("common.cancel"), style: "cancel" },
-  ]);
+  const copy = async () => {
+    await Clipboard.setStringAsync(text);
+    setCopied(true);
+    setTimeout(onCopied, 700);
+  };
+
+  return (
+    <View style={[s.actions, { borderColor: theme.bdSoft, backgroundColor: theme.bg }]}>
+      {onRestore ? (
+        <ActionButton theme={theme} icon="arrow-into-input" label={t("message.toComposer")} onPress={onRestore} />
+      ) : null}
+      {onRevert ? (
+        <ActionButton theme={theme} icon="undo" label={t("message.revert")} onPress={onRevert} />
+      ) : null}
+      <ActionButton
+        theme={theme}
+        icon={copied ? "check" : "copy"}
+        label={t(copied ? "message.copied" : "message.copy")}
+        onPress={copy}
+        accent={copied}
+      />
+    </View>
+  );
 }
 
-export function InlineText({ text, theme }: { text: string; theme: Theme }) {
-  const parts = text.split(CHUNKS);
+function ActionButton({
+  theme,
+  icon,
+  label,
+  onPress,
+  accent,
+}: {
+  theme: Theme;
+  icon: IconName;
+  label: string;
+  onPress: () => void;
+  accent?: boolean;
+}) {
   return (
-    <Text style={{ fontSize: 14, lineHeight: 21, color: theme.ink }}>
-      {parts.map((p, i) => {
-        if (p.startsWith("`") && p.endsWith("`") && p.length > 2) {
-          return (
-            <Text key={i} style={[mono, { fontSize: 12.5, color: theme.muted }]}>
-              {p.slice(1, -1)}
-            </Text>
-          );
-        }
-        if (/^https?:\/\//.test(p)) {
-          return (
-            <Text key={i} style={{ color: theme.acc }} onPress={() => linkActions(p)}>
-              {p}
-            </Text>
-          );
-        }
-        return <Text key={i}>{p}</Text>;
-      })}
-    </Text>
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [s.actionBtn, { backgroundColor: pressed ? theme.l2 : "transparent" }]}
+    >
+      <Icon name={icon} size={13} color={accent ? theme.acc : theme.muted} />
+      <Text style={{ fontSize: 11.5, color: accent ? theme.acc : theme.muted }}>{label}</Text>
+    </Pressable>
   );
 }
 
@@ -116,6 +142,8 @@ export function MessageView({
   showReasoning = true,
   expandShell = false,
   expandEdit = false,
+  onRestore,
+  onRevert,
 }: {
   theme: Theme;
   msg: StoredMessage;
@@ -124,14 +152,24 @@ export function MessageView({
   showReasoning?: boolean;
   expandShell?: boolean;
   expandEdit?: boolean;
+  /** Puts the prompt back in the composer for editing. */
+  onRestore?: (text: string) => void;
+  /** Rolls the workspace back to before this message. */
+  onRevert?: (messageID: string) => void;
 }) {
+  // There is no hover on a phone, so the actions opencode shows on hover live
+  // behind a long press instead.
+  const [actions, setActions] = useState(false);
   const isUser = msg.info.role === "user";
   if (isUser) {
     const text = msg.parts.find((p) => p.type === "text");
     const file = msg.parts.find((p) => p.type === "file");
+    const body = text && text.type === "text" ? text.text : "";
     return (
       <View style={{ marginVertical: 10, alignItems: "flex-end" }}>
-        <View
+        <Pressable
+          onLongPress={() => setActions((v) => !v)}
+          delayLongPress={280}
           style={[
             s.userBubble,
             { backgroundColor: theme.l2 },
@@ -145,10 +183,17 @@ export function MessageView({
               </Text>
             </View>
           )}
-          {text && text.type === "text" ? (
-            <Text style={{ fontSize: 14, color: theme.ink, lineHeight: 21 }}>{text.text}</Text>
-          ) : null}
-        </View>
+          {body ? <Text style={{ fontSize: 14, color: theme.ink, lineHeight: 21 }}>{body}</Text> : null}
+        </Pressable>
+        {actions ? (
+          <UserActions
+            theme={theme}
+            text={body}
+            onCopied={() => setActions(false)}
+            onRestore={onRestore ? () => { onRestore(body); setActions(false); } : undefined}
+            onRevert={onRevert ? () => { onRevert(msg.info.id); setActions(false); } : undefined}
+          />
+        ) : null}
       </View>
     );
   }
@@ -178,9 +223,9 @@ export function MessageView({
       {reasoning.map((r) => (
         <ReasoningBlock key={r.id} theme={theme} text={r.text} />
       ))}
-      {texts.map((t, i) => (
+      {texts.map((body, i) => (
         <View key={i} style={{ marginVertical: 8 }}>
-          <InlineText text={t} theme={theme} />
+          <Markdown text={body} theme={theme} />
         </View>
       ))}
       {errored && (
@@ -225,6 +270,23 @@ export function PendingShim({ theme }: { theme: Theme }) {
 }
 
 const s = StyleSheet.create({
+  actions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 2,
+    marginTop: 6,
+    padding: 3,
+    borderWidth: 1,
+    borderRadius: 9,
+  },
+  actionBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    paddingHorizontal: 9,
+    paddingVertical: 6,
+    borderRadius: 7,
+  },
   userBubble: {
     maxWidth: "86%",
     alignSelf: "flex-end",

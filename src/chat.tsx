@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
+  Alert,
   FlatList,
   InteractionManager,
   Keyboard,
@@ -19,7 +20,7 @@ import { sessionTitle, variantName } from "./store";
 import { MessageView, PendingShim } from "./message";
 import { BottomSheet, RowList, SheetRow } from "./sheet";
 import { useDrawerSwipe } from "./swipe";
-import { SessionsPanel } from "./panel";
+import { SessionsPanel, visibleSessions } from "./panel";
 import { SettingsScreen } from "./settings";
 import { Composer } from "./composer";
 import { Avatar, Wordmark } from "./ui";
@@ -44,6 +45,25 @@ export function ChatScreen({
 }) {
   const store = useStore();
   const [drawerOpen, setDrawerOpen] = useState(false);
+  // Undo rewrites the working tree, so it asks first.
+  const confirmRevert = useCallback(
+    (messageID: string) => {
+      Alert.alert(t("message.revert"), t("message.revertConfirm"), [
+        { text: t("common.cancel"), style: "cancel" },
+        {
+          text: t("message.revert"),
+          style: "destructive",
+          onPress: () => {
+            store.revertTo(messageID).catch((e: unknown) => {
+              Alert.alert(t("message.revertFailed"), e instanceof Error ? e.message : undefined);
+            });
+          },
+        },
+      ]);
+    },
+    [store],
+  );
+
   const drawerSwipe = useDrawerSwipe({
     open: drawerOpen,
     onOpen: () => setDrawerOpen(true),
@@ -51,7 +71,7 @@ export function ChatScreen({
   });
   const [helpOpen, setHelpOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [sheet, setSheet] = useState<null | "model" | "effort" | "attach" | "project" | "branch" | "settings" | "more" | "filePick">(null);
+  const [sheet, setSheet] = useState<null | "model" | "effort" | "attach" | "project" | "branch" | "settings" | "more" | "filePick" | "sessions">(null);
   const [fileQuery, setFileQuery] = useState("");
   const [fileRows, setFileRows] = useState<SheetRow[]>([]);
   const [renaming, setRenaming] = useState<string | null>(null);
@@ -158,6 +178,7 @@ export function ChatScreen({
         onCloseSession={closeActive}
         onNew={onNew}
         onMore={() => setSheet("more")}
+        onPickSession={() => setSheet("sessions")}
       />
 
       <View style={{ flex: 1, minHeight: 0 }}>
@@ -177,6 +198,11 @@ export function ChatScreen({
                 showReasoning={store.settings.showReasoning}
                 expandShell={store.settings.expandShell}
                 expandEdit={store.settings.expandEdit}
+                onRestore={(body) => {
+                  setDraft(body);
+                  Keyboard.dismiss();
+                }}
+                onRevert={store.connected ? confirmRevert : undefined}
               />
             )}
             ListFooterComponent={busyHere ? <PendingShim theme={theme} /> : null}
@@ -350,6 +376,23 @@ export function ChatScreen({
         />
       </BottomSheet>
 
+      <BottomSheet theme={theme} open={sheet === "sessions"} title={t("chat.pickSession")} onClose={() => setSheet(null)}>
+        <RowList
+          theme={theme}
+          searchable
+          rows={visibleSessions(store).map((sess) => ({
+            id: sess.id,
+            name: sessionTitle(sess),
+            selected: sess.id === store.activeId,
+            icon: "folder",
+          }))}
+          onPick={(r) => {
+            store.openSession(r.id);
+            setSheet(null);
+          }}
+        />
+      </BottomSheet>
+
       <BottomSheet theme={theme} open={sheet === "branch"} title={t("chat.branch")} onClose={() => setSheet(null)}>
         <RowList theme={theme} rows={[{ id: "1", name: "master" }]} onPick={() => setSheet(null)} />
       </BottomSheet>
@@ -509,6 +552,7 @@ function Header({
   onCloseSession,
   onNew,
   onMore,
+  onPickSession,
 }: {
   theme: Theme;
   title: string;
@@ -520,6 +564,8 @@ function Header({
   onCloseSession: () => void;
   onNew: () => void;
   onMore: () => void;
+  /** Long press on the title: jump straight to another session. */
+  onPickSession: () => void;
 }) {
   return (
     <View style={[styles.header, { paddingTop: 6 }]}>
@@ -531,6 +577,8 @@ function Header({
       <View style={styles.headerMid}>
         <Pressable
           onPress={onMore}
+          onLongPress={onPickSession}
+          delayLongPress={280}
           style={({ pressed }) => [styles.tab, { backgroundColor: pressed ? theme.l3 : theme.l2 }]}
         >
           <Avatar theme={theme} letter={projectAv} size={20} mark={brandMark && !hasSession} />

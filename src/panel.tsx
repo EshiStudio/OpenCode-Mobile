@@ -22,6 +22,26 @@ function dayLabel(when: number): string {
   return t("common.earlier");
 }
 
+/**
+ * Sessions worth showing, newest first. Server sessions are filtered to the
+ * ones this device started; on-device sessions live somewhere else entirely.
+ * Shared so the panel and the title's quick-pick can never drift apart.
+ */
+export function visibleSessions(store: ReturnType<typeof useStore>): SessionInfo[] {
+  const items: SessionInfo[] = store.connected
+    ? store.sessions.filter((s) => store.registered.includes(s.id))
+    : store.local.sessions.map(
+        (l) =>
+          ({
+            id: l.id,
+            title: l.title,
+            time: { updated: l.when },
+            directory: t("chat.device"),
+          }) as SessionInfo,
+      );
+  return [...items].sort((a, b) => (b.time?.updated || 0) - (a.time?.updated || 0));
+}
+
 export function SessionsPanel({
   theme,
   open,
@@ -50,21 +70,10 @@ export function SessionsPanel({
   }, [open, tx]);
 
   const list = useMemo(() => {
-    let items: SessionInfo[];
-    if (store.connected) {
-      items = store.sessions.filter((s) => store.registered.includes(s.id));
-    } else {
-      items = store.local.sessions.map((l) => ({
-        id: l.id,
-        title: l.title,
-        time: { updated: l.when },
-        directory: t("chat.device"),
-      } as SessionInfo));
-    }
+    const items = visibleSessions(store);
     const q = query.trim().toLowerCase();
-    if (q) items = items.filter((s) => (s.title || "").toLowerCase().includes(q));
-    return items.sort((a, b) => (b.time?.updated || 0) - (a.time?.updated || 0));
-  }, [store.sessions, store.local, store.registered, store.connected, query]);
+    return q ? items.filter((s) => (s.title || "").toLowerCase().includes(q)) : items;
+  }, [store, query]);
 
   const groups: Array<{ label: string; items: SessionInfo[] }> = [];
   for (const it of list) {

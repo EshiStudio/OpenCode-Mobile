@@ -134,6 +134,18 @@ export class Api {
     });
   }
 
+  /**
+   * Rolls the working tree back to the state before `messageID` was sent.
+   * Server-side only: on-device sessions never touch a checkout, so there is
+   * nothing to undo.
+   */
+  revert(id: string, messageID: string) {
+    return this.request<unknown>(`/session/${id}/revert`, {
+      method: "POST",
+      body: JSON.stringify({ messageID }),
+    });
+  }
+
   abort(id: string) {
     return this.request<boolean>(`/session/${id}/abort`, { method: "POST" });
   }

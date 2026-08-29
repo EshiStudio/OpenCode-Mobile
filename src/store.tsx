@@ -165,6 +165,11 @@ export type StoreState = {
   createNew: () => Promise<string>;
   send: (text: string, attach?: Attachment[]) => Promise<void>;
   abort: () => void;
+  /**
+   * Asks the server to undo everything done after `messageID`. Rejects on a
+   * device-only session — there is no checkout to roll back.
+   */
+  revertTo: (messageID: string) => Promise<void>;
   respondPermission: (p: PermissionRequest, response: "allow" | "deny", remember?: boolean) => void;
   setModel: (providerID: string, modelID: string) => void;
   setVariant: (v: EffortVariant) => void;
@@ -611,6 +616,19 @@ export function StoreProvider({
     }
     setState((s) => ({ ...s, statuses: { ...s.statuses, [sid]: { type: "idle" } as SessionStatus }, busy: false }));
   }, [state.activeId, state.connected]);
+
+  const revertTo = useCallback(
+    async (messageID: string) => {
+      const sid = stateRef.current.activeId;
+      if (!sid) return;
+      if (!stateRef.current.connected || !apiRef.current) {
+        throw new Error(t("message.revertUnavailable"));
+      }
+      await apiRef.current.revert(sid, messageID);
+      await refreshMessages(sid);
+    },
+    [refreshMessages],
+  );
 
   const localAcRef = useRef<AbortController | null>(null);
 
@@ -1221,6 +1239,7 @@ export function StoreProvider({
     setUpdateRepo,
     checkUpdate,
     saveYandex,
+    revertTo,
     localAbort: () => localAcRef.current?.abort(),
     clearError: () => setState((s) => ({ ...s, error: null })),
   };
