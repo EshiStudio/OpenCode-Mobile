@@ -2,7 +2,7 @@
   "expo": {
     "name": "OpenCode Mobile",
     "slug": "opencode-mobile",
-    "version": "1.3.0",
+    "version": "1.3.1",
     "orientation": "portrait",
     "softwareKeyboardLayoutMode": "resize",
     "icon": "./assets/icon.png",
@@ -17,19 +17,22 @@
     },
     "android": {
       "package": "com.anonymous.opencodemobile",
-      "permissions": ["REQUEST_INSTALL_PACKAGES"],
+      "permissions": [
+        "REQUEST_INSTALL_PACKAGES"
+      ],
       "predictiveBackGestureEnabled": false,
       "adaptiveIcon": {
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
-      "versionCode": 102
+      "versionCode": 103
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
+      "expo-notifications",
       "expo-secure-store",
       "expo-status-bar",
       [

@@ -8,6 +8,7 @@ import { makeTheme } from "./src/theme";
 import { Lang, setLocale, t } from "./src/i18n";
 import { ChatScreen } from "./src/chat";
 import { UpdateOverlay } from "./src/update-overlay";
+import { registerBackgroundUpdateTask } from "./src/background";
 import {
   loadConnection,
   loadSaved,
@@ -104,6 +105,8 @@ export default function App() {
   const [crash, setCrash] = useState<CrashReport | null>(null);
 
   useEffect(() => {
+    registerBackgroundUpdateTask().catch(console.error);
+
     (async () => {
       try {
         const report = await loadCrash();

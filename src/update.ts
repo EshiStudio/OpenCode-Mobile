@@ -11,7 +11,7 @@ import { t } from "./i18n";
  */
 
 /** Version of this build. Kept in step with `version` in app.json. */
-export const APP_VERSION = "1.3.0";
+export const APP_VERSION = "1.3.1";
 
 export type Release = {
   version: string;
