@@ -19,6 +19,7 @@ import { sessionTitle, variantName } from "./store";
 import { MessageView, PendingShim } from "./message";
 import { BottomSheet, RowList, SheetRow } from "./sheet";
 import { useDrawerSwipe } from "./swipe";
+import { BUILTIN_IDS } from "./local-ai";
 import { installUpdate } from "./update";
 import { SessionsPanel, visibleSessions } from "./panel";
 import { SettingsScreen } from "./settings";
@@ -664,7 +665,9 @@ function localModelRows(
 ): SheetRow[] {
   const rows: SheetRow[] = [];
   for (const p of providers) {
-    if (!keys[p.id]) continue;
+    // Custom endpoints may need no key at all, so their presence is what counts;
+    // a built-in provider without a key is simply not set up yet.
+    if (!keys[p.id] && BUILTIN_IDS.includes(p.id)) continue;
     const label = presetName(p);
     const known = cached[p.id]?.length ? cached[p.id] : catalogModels(p.id);
     const ids = known.length ? known : [p.model, modelID].filter(Boolean);

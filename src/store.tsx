@@ -724,7 +724,11 @@ export function StoreProvider({
       }
       const model = local.modelByPreset[presetId] || local.model || preset.model;
       const apiKey = keys[presetId] || "";
-      if (!apiKey || !model) {
+      // A key is only demanded of the built-in providers. A custom endpoint —
+      // a local proxy, an LLM on the network — may well need none, and the
+      // dialog that adds one says as much.
+      const needsKey = BUILTIN_IDS.includes(presetId);
+      if ((needsKey && !apiKey) || !model) {
         setState((s) => ({ ...s, error: t("store.noKey") }));
         return;
       }
