@@ -19,6 +19,9 @@ import { Theme } from "./theme";
 import { Avatar, usePressScale } from "./ui";
 import { variantName } from "./store";
 
+/** Breathing room between the input and the keys, so the two do not touch. */
+const KEYBOARD_GAP = 14;
+
 /** One line of text plus the input's own padding — keeps the box from jumping. */
 const INPUT_MIN_HEIGHT = 42;
 
@@ -79,7 +82,7 @@ export function Composer({
 
   return (
     <Animated.View style={{ paddingBottom: kbOffset }}>
-      <View style={{ paddingHorizontal: 16, paddingBottom: 10 + (typing ? 0 : insets.bottom) }}>
+      <View style={{ paddingHorizontal: 16, paddingBottom: 10 + (typing ? KEYBOARD_GAP : insets.bottom) }}>
         {attachments.length ? (
           <ScrollView
             horizontal

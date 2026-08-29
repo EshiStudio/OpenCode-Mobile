@@ -92,8 +92,8 @@ android {
         applicationId 'com.anonymous.opencodemobile'
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 113
-        versionName "1.4.1"
+        versionCode 114
+        versionName "1.4.2"
 
         buildConfigField "String", "REACT_NATIVE_RELEASE_LEVEL", "\"${findProperty('reactNativeReleaseLevel') ?: 'stable'}\""
     }

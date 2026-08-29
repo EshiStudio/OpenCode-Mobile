@@ -2,7 +2,7 @@
   "expo": {
     "name": "OpenCode Mobile",
     "slug": "opencode-mobile",
-    "version": "1.4.1",
+    "version": "1.4.2",
     "orientation": "portrait",
     "softwareKeyboardLayoutMode": "resize",
     "icon": "./assets/icon.png",
@@ -26,7 +26,7 @@
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
-      "versionCode": 113
+      "versionCode": 114
     },
     "web": {
       "favicon": "./assets/favicon.png"
