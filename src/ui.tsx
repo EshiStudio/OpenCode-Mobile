@@ -109,37 +109,51 @@ export function Spinner({ size = 13, color }: { size?: number; color: string }) 
   return <ActivityIndicator size="small" color={color} style={{ width: size, height: size, transform: [{ scale: size / 20 }] }} />;
 }
 
+/** Pixel size of one cell in the wordmark, and how many make up a glyph. */
+const WM_CELL = 6;
+const WM_COLS = 5;
+const WM_ROWS = 9;
+
+const WM_GLYPHS: Record<string, { top: number; rows: string[] }> = {
+  o: { top: 2, rows: ["11111", "10001", "10001", "10001", "11111"] },
+  p: { top: 2, rows: ["11111", "10001", "10001", "10001", "11111", "10000", "10000"] },
+  e: { top: 2, rows: ["11111", "10001", "11111", "10000", "11111"] },
+  n: { top: 2, rows: ["11111", "10001", "10001", "10001", "10001"] },
+  c: { top: 2, rows: ["11111", "10000", "10000", "10000", "11111"] },
+  d: { top: 0, rows: ["00001", "00001", "11111", "10001", "10001", "10001", "11111"] },
+};
+
+/**
+ * The wordmark, drawn a cell at a time.
+ *
+ * Laid out row by row rather than as one wrapping grid: a wrapping grid has to
+ * fit exactly five cells per line, and once dp rounds to whole pixels the fifth
+ * cell can spill onto the next line — which punched holes through the letters.
+ * Explicit rows cannot wrap, so they cannot break.
+ */
 export function Wordmark({ theme }: { theme: Theme }) {
-  const GLYPH: Record<string, { top: number; rows: string[] }> = {
-    o: { top: 2, rows: ["11111", "10001", "10001", "10001", "11111"] },
-    p: { top: 2, rows: ["11111", "10001", "10001", "10001", "11111", "10000", "10000"] },
-    e: { top: 2, rows: ["11111", "10001", "11111", "10000", "11111"] },
-    n: { top: 2, rows: ["11111", "10001", "10001", "10001", "10001"] },
-    c: { top: 2, rows: ["11111", "10000", "10000", "10000", "11111"] },
-    d: { top: 0, rows: ["00001", "00001", "11111", "10001", "10001", "10001", "11111"] },
-  };
-  const word = "opencode";
-  const ROWS = 9;
   return (
     <View style={{ flexDirection: "row", gap: 7 }}>
-      {word.split("").map((ch, wi) => {
-        const def = GLYPH[ch];
+      {"opencode".split("").map((ch, wi) => {
+        const def = WM_GLYPHS[ch];
         return (
-          <View key={wi} style={{ flexDirection: "row", flexWrap: "wrap", width: 30, height: ROWS * 6 }}>
-            {Array.from({ length: ROWS * 5 }).map((_, i) => {
-              const r = Math.floor(i / 5);
-              const c = i % 5;
+          <View key={wi}>
+            {Array.from({ length: WM_ROWS }).map((_, r) => {
               const src = r - def.top;
-              const on = src >= 0 && src < def.rows.length && def.rows[src][c] === "1";
+              const bits = src >= 0 && src < def.rows.length ? def.rows[src] : null;
               return (
-                <View
-                  key={i}
-                  style={{
-                    width: 6,
-                    height: 6,
-                    backgroundColor: on ? theme.wm : "transparent",
-                  }}
-                />
+                <View key={r} style={{ flexDirection: "row" }}>
+                  {Array.from({ length: WM_COLS }).map((__, c) => (
+                    <View
+                      key={c}
+                      style={{
+                        width: WM_CELL,
+                        height: WM_CELL,
+                        backgroundColor: bits && bits[c] === "1" ? theme.wm : "transparent",
+                      }}
+                    />
+                  ))}
+                </View>
               );
             })}
           </View>
