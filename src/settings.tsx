@@ -295,52 +295,27 @@ function LanguageSection({ theme, lang, setLang }: { theme: Theme; lang: Lang; s
 
 function AboutSection({ theme }: { theme: Theme }) {
   const store = useStore();
-  const [repo, setRepo] = useState(store.updateRepo);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState("");
-
-  React.useEffect(() => setRepo(store.updateRepo), [store.updateRepo]);
 
   const check = async () => {
     setBusy(true);
     setNote("");
-    await store.setUpdateRepo(repo.trim());
+    const hardcodedRepo = "EshiStudio/OpenCode-Mobile";
+    await store.setUpdateRepo(hardcodedRepo);
     const rel = await store.checkUpdate();
     setBusy(false);
-    setNote(
-      rel
-        ? t("settings.about.available", { version: rel.version })
-        : repo.trim()
-          ? t("settings.about.upToDate")
-          : t("settings.about.needRepo"),
-    );
+    setNote(rel ? t("settings.about.available", { version: rel.version }) : t("settings.about.upToDate"));
   };
 
   return (
     <>
       <Card theme={theme}>
-        <Row theme={theme}>
+        <Row theme={theme} last>
           <View style={s.rowText}>
             <Text style={{ fontSize: 13.5, color: theme.ink, fontWeight: "600" }}>{t("settings.about.version")}</Text>
           </View>
           <Text style={{ fontSize: 13, color: theme.muted }}>{store.appVersion}</Text>
-        </Row>
-        <Row theme={theme} last>
-          <View style={s.rowText}>
-            <Text style={{ fontSize: 13.5, color: theme.ink, fontWeight: "600" }}>{t("settings.about.repo")}</Text>
-            <Text style={{ fontSize: 12, color: theme.muted, marginTop: 2 }}>
-              {t("settings.about.repoDesc")}
-            </Text>
-            <TextInput
-              value={repo}
-              onChangeText={setRepo}
-              placeholder="owner/repo"
-              placeholderTextColor={theme.faint}
-              autoCapitalize="none"
-              autoCorrect={false}
-              style={[s.textInput, { color: theme.ink, borderColor: theme.bd }]}
-            />
-          </View>
         </Row>
       </Card>
 
