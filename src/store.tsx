@@ -715,7 +715,7 @@ export function StoreProvider({
 
   const sendLocal = useCallback(
     async (text: string, sid: string, files: Attachment[] = []) => {
-      const { local, keys, settings, yandexToken, presets } = stateRef.current;
+      const { local, keys, settings, yandexToken, yandexRoot, presets } = stateRef.current;
       const presetId = local.presetID;
       const preset = findPreset(presets, presetId);
       if (!preset) {
@@ -733,13 +733,41 @@ export function StoreProvider({
         return;
       }
 
+      // Yandex Disk predates the cloud list and still has a field of its own, so
+      // it is folded in here rather than at each of the three places that ask
+      // which clouds are attached: the note, the tool list, and the tools. They
+      // disagreed, and did so in both directions — a disk attached through
+      // Settings → Clouds got the tools but a note saying no disk was connected,
+      // while the legacy field alone would have got the note without the tools.
+      // Either way the model was handed two contradictory accounts of itself and
+      // told the user so. A cloud attached through Settings → Clouds wins here,
+      // being the newer of the two.
+      const cloudTokens: Record<string, string> = {
+        ...(yandexToken ? { yandex: yandexToken } : {}),
+        ...stateRef.current.cloudTokens,
+      };
+      const cloudRoots: Record<string, string> = {
+        ...(yandexRoot ? { yandex: yandexRoot } : {}),
+        ...stateRef.current.cloudRoots,
+      };
+      const storages = CLOUD_IDS.filter((id) => cloudTokens[id]).map((id) => cloudName(id));
+
+      const activeProject = local.projects.find((p) => p.id === local.activeProject);
+      const workspace = activeProject
+        ? {
+            name: activeProject.name,
+            storage: activeProject.cloud ? cloudName(activeProject.cloud as CloudId) : t("chat.device"),
+            path: activeProject.path,
+          }
+        : undefined;
+
       const prior = local.messages[sid] || [];
       // Web is always available; files and disk follow their switches.
       const tools = [
         ...webTools(),
         ...appTools(),
         ...(settings.localWork ? [...fileTools(), ...downloadTools()] : []),
-        ...(Object.keys(stateRef.current.cloudTokens).length ? diskTools() : []),
+        ...(Object.keys(cloudTokens).length ? diskTools() : []),
       ];
       // Images ride along as content parts; anything else becomes text in the turn.
       const images = files.filter((f) => f.kind === "image" && f.text);
@@ -758,9 +786,9 @@ export function StoreProvider({
           ]
         : userText;
       const history: LocalMsg[] = [
-        { role: "system", content: systemPrompt(settings, !!yandexToken) },
+        { role: "system", content: systemPrompt(settings, storages) },
         ...prior.map((m) => ({ role: m.role, content: m.content }) as LocalMsg),
-        { role: "system", content: capabilityNote(settings, !!yandexToken) },
+        { role: "system", content: capabilityNote(settings, storages, workspace) },
         { role: "user", content: userContent },
       ];
 
@@ -866,7 +894,7 @@ export function StoreProvider({
             } catch {
               // label falls back to the bare name
             }
-            const out = await runTool(call.name, call.args, { yandexToken, yandexRoot: stateRef.current.yandexRoot, cloudTokens: stateRef.current.cloudTokens, cloudRoots: stateRef.current.cloudRoots, preferredCloud: stateRef.current.preferredCloud, app: appControl.current });
+            const out = await runTool(call.name, call.args, { cloudTokens, cloudRoots, preferredCloud: stateRef.current.preferredCloud, app: appControl.current });
             acc += (acc ? "\n" : "") + "· " + toolLabel(call.name, parsed);
             patch(acc, false);
             history.push({ role: "tool", tool_call_id: call.id || call.name, content: out });

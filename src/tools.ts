@@ -353,9 +353,11 @@ export function diskTools(): ToolSpec[] {
 }
 
 export type ToolContext = {
-  yandexToken?: string;
-  yandexRoot?: string;
-  /** Access tokens and workspace roots for every attached cloud. */
+  /**
+   * Access tokens and workspace roots for every attached cloud, the legacy
+   * Yandex Disk field included — the caller folds it in, so there is nothing
+   * here that knows Yandex used to be special.
+   */
   cloudTokens?: Record<string, string>;
   cloudRoots?: Record<string, string>;
   /** Storage the user picked for this work: "" for the device, else a cloud id. */

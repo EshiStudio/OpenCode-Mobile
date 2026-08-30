@@ -311,16 +311,17 @@ const EN: Record<string, string> = {
     "Current state right now: {local}, {disk}. Ignore any earlier claims to the contrary in this conversation.",
   "ai.state.localOn": "local work is ENABLED",
   "ai.state.localOff": "local work is disabled",
-  "ai.state.diskOn": "Yandex Disk is CONNECTED",
-  "ai.state.diskOff": "Yandex Disk is not connected",
+  "ai.state.diskOn": "cloud storage is CONNECTED ({names})",
+  "ai.state.diskOff": "no cloud storage is connected",
+  "ai.state.project": " The working folder is the project \"{name}\" in {storage}, at {path}. Work there unless told otherwise.",
   "ai.prompt.localOn":
     "Local work is enabled. Use write_file, make_dir, list_dir, read_file and delete_path to work with files in the app's working folder on the device. Use relative paths, for example notes/todo.md. download_url fetches a file by link, and save_to_device hands the finished file to the phone's storage — the user picks the folder.",
   "ai.prompt.localOff":
     "Local work is disabled: you CANNOT create files or folders on the device. If the user asks to create, save or copy something locally, reply that local work is turned off and ask them to connect a cloud drive in the app settings.",
   "ai.prompt.diskOn":
-    "Yandex Disk is connected: use disk_write_file, disk_make_dir, disk_list and disk_read_file. The working folder on the disk is opencode; give paths relative to it.",
+    "Cloud storage is connected ({names}): use disk_write_file, disk_make_dir, disk_list and disk_read_file. Give paths relative to the working folder on the disk. When more than one storage is attached, disk_list takes a cloud argument to choose between them.",
   "ai.prompt.diskOff":
-    "Yandex Disk is not connected: saving to the cloud is unavailable, suggest connecting it in the settings.",
+    "No cloud storage is connected: saving to the cloud is unavailable, suggest connecting one in the settings.",
   "ai.prompt.base":
     "You are the assistant of the OpenCode mobile app. Answer briefly and to the point. Reply in English. You have internet access: web_search for searching and fetch_url for loading a page. You can also configure the app itself: app_status shows what is connected, app_connect_cloud attaches a cloud with a token from the user, app_set_provider_key stores a provider key, app_use_model switches the model, app_set_setting flips the switches. If the user sends a token or a key, apply it yourself through these tools and confirm the result. ",
 
@@ -779,16 +780,17 @@ const RU: Record<string, string> = {
     "Актуальное состояние на сейчас: {local}, {disk}. Игнорируйте более ранние утверждения об обратном в этом диалоге.",
   "ai.state.localOn": "локальная работа ВКЛЮЧЕНА",
   "ai.state.localOff": "локальная работа выключена",
-  "ai.state.diskOn": "Яндекс Диск ПОДКЛЮЧЕН",
-  "ai.state.diskOff": "Яндекс Диск не подключен",
+  "ai.state.diskOn": "облачное хранилище ПОДКЛЮЧЕНО ({names})",
+  "ai.state.diskOff": "облачное хранилище не подключено",
+  "ai.state.project": " Рабочая папка — проект «{name}» в {storage}, путь {path}. Работайте в ней, если не сказано иное.",
   "ai.prompt.localOn":
     "У вас включена локальная работа. Используйте инструменты write_file, make_dir, list_dir, read_file, delete_path для работы с файлами в рабочей папке приложения на устройстве. Пути указывайте относительными, например notes/todo.md. Файл по ссылке скачивает download_url, а save_to_device отдаёт готовый файл в память телефона — папку выбирает сам пользователь.",
   "ai.prompt.localOff":
     "Локальная работа выключена: вы НЕ можете создавать файлы или папки на устройстве. Если пользователь просит создать, сохранить или скопировать что-то локально — ответьте, что функция локальной работы отключена и попросите подключить облако в настройках приложения.",
   "ai.prompt.diskOn":
-    "Яндекс Диск подключен: используйте disk_write_file, disk_make_dir, disk_list, disk_read_file. Рабочая папка на диске — opencode, пути указывайте относительно неё.",
+    "Облачное хранилище подключено ({names}): используйте disk_write_file, disk_make_dir, disk_list, disk_read_file. Пути указывайте относительно рабочей папки на диске. Если хранилищ несколько, у disk_list есть аргумент cloud для выбора между ними.",
   "ai.prompt.diskOff":
-    "Яндекс Диск не подключен: сохранение в облако недоступно, предложите подключить его в настройках.",
+    "Облачное хранилище не подключено: сохранение в облако недоступно, предложите подключить его в настройках.",
   "ai.prompt.base":
     "Вы — ассистент мобильного приложения OpenCode. Отвечайте кратко и по делу. Отвечайте по-русски. У вас есть доступ в интернет: web_search для поиска и fetch_url для загрузки страницы. Вы также можете настраивать само приложение: app_status показывает, что подключено, app_connect_cloud подключает облако по токену пользователя, app_set_provider_key сохраняет ключ провайдера, app_use_model переключает модель, app_set_setting меняет переключатели. Если пользователь прислал токен или ключ — примените его сами через эти инструменты и подтвердите результат. ",
 

@@ -102,15 +102,41 @@ export function findPreset(custom: ProviderPreset[], id: string): ProviderPreset
  * Short restatement of the current capabilities, injected right before the newest
  * question. Earlier turns may claim a provider or the disk is missing; recency wins.
  */
-export function capabilityNote(settings: AppSettings, yandexToken: boolean): string {
+/** Where the work is happening, when a project has been chosen. */
+export type Workspace = { name: string; storage: string; path: string };
+
+/**
+ * What is true right now, told to the model every turn.
+ *
+ * `storages` are the connected clouds by name, empty when there are none. It
+ * used to be a single boolean for Yandex Disk, which went stale the moment
+ * clouds became a list: a disk attached through Settings → Clouds left the
+ * flag false, so the model was told it had no disk while holding the tools to
+ * use one, and said so to the user.
+ */
+export function capabilityNote(
+  settings: AppSettings,
+  storages: string[],
+  workspace?: Workspace,
+): string {
   const local = t(settings.localWork ? "ai.state.localOn" : "ai.state.localOff");
-  const disk = t(yandexToken ? "ai.state.diskOn" : "ai.state.diskOff");
-  return t("ai.state.now", { local, disk });
+  const disk = storages.length
+    ? t("ai.state.diskOn", { names: storages.join(", ") })
+    : t("ai.state.diskOff");
+  const where = workspace ? t("ai.state.project", workspace) : "";
+  return t("ai.state.now", { local, disk }) + where;
 }
 
-export function systemPrompt(settings: AppSettings, yandexToken: boolean): string {
+/**
+ * The standing instructions. Takes the connected clouds by name rather than a
+ * flag: the disk paragraph used to name Yandex Disk outright, which was a lie
+ * to anyone who had attached Dropbox or Google Drive instead.
+ */
+export function systemPrompt(settings: AppSettings, storages: string[]): string {
   const local = t(settings.localWork ? "ai.prompt.localOn" : "ai.prompt.localOff");
-  const disk = t(yandexToken ? "ai.prompt.diskOn" : "ai.prompt.diskOff");
+  const disk = storages.length
+    ? t("ai.prompt.diskOn", { names: storages.join(", ") })
+    : t("ai.prompt.diskOff");
   return t("ai.prompt.base") + local + " " + disk;
 }
 
