@@ -46,6 +46,8 @@ export function SettingsScreen({
   setLang,
   open,
   onClose,
+  onOpenConnect,
+  onDisconnectServer,
 }: {
   theme: Theme;
   dark: boolean;
@@ -54,6 +56,9 @@ export function SettingsScreen({
   setLang: (l: Lang) => void;
   open: boolean;
   onClose: () => void;
+  /** Opens the connect screen. The connection itself lives in App. */
+  onOpenConnect: () => void;
+  onDisconnectServer: () => void;
 }) {
   const [page, setPage] = useState<Page>("root");
   const off = Dimensions.get("window").width || 520;
@@ -116,7 +121,9 @@ export function SettingsScreen({
             {page === "providers" ? <ProvidersSection theme={theme} /> : null}
             {page === "models" ? <ModelsSection theme={theme} /> : null}
             {page === "clouds" ? <CloudsSection theme={theme} /> : null}
-            {page === "server" ? <ServerSection theme={theme} /> : null}
+            {page === "server" ? (
+              <ServerSection theme={theme} onOpenConnect={onOpenConnect} onDisconnectServer={onDisconnectServer} />
+            ) : null}
             {page === "about" ? <AboutSection theme={theme} /> : null}
             </Animated.View>
           </ScrollView>
@@ -584,7 +591,15 @@ function CloudsSection({ theme }: { theme: Theme }) {
   );
 }
 
-function ServerSection({ theme }: { theme: Theme }) {
+function ServerSection({
+  theme,
+  onOpenConnect,
+  onDisconnectServer,
+}: {
+  theme: Theme;
+  onOpenConnect: () => void;
+  onDisconnectServer: () => void;
+}) {
   const store = useStore();
   return (
     <>
@@ -606,6 +621,18 @@ function ServerSection({ theme }: { theme: Theme }) {
           </Text>
         </View>
       </ListCard>
+      <Pressable
+        onPress={store.connected ? onDisconnectServer : onOpenConnect}
+        style={({ pressed }) => [
+          s.wideBtn,
+          s.btnGhost,
+          { marginTop: 12, borderColor: theme.bd, backgroundColor: pressed ? theme.l2 : "transparent" },
+        ]}
+      >
+        <Text style={{ fontSize: 13, color: store.connected ? theme.err : theme.ink }}>
+          {t(store.connected ? "settings.server.disconnect" : "settings.server.connect")}
+        </Text>
+      </Pressable>
       <Text style={{ fontSize: 12, color: theme.muted, marginTop: 12, lineHeight: 17 }}>
         {t("settings.server.run")}
       </Text>

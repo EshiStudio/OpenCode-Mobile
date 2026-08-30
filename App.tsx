@@ -103,6 +103,13 @@ export default function App() {
   const [lang, setLangState] = useState<Lang>("en");
   const [ready, setReady] = useState(false);
   const [crash, setCrash] = useState<CrashReport | null>(null);
+  /**
+   * The connect screen is opened from Settings rather than shown at startup:
+   * the app works on its own and a server is an addition, not a gate. It was
+   * written long ago and then left unreachable — nothing rendered it, so the
+   * server support underneath had no way in.
+   */
+  const [connectOpen, setConnectOpen] = useState(false);
 
   useEffect(() => {
     registerBackgroundUpdateTask().catch(console.error);
@@ -128,6 +135,11 @@ export default function App() {
   }, []);
 
   const handleConnectionFailure = useCallback(() => setConn(null), []);
+
+  const dropServer = useCallback(() => {
+    clearConnection();
+    setConn(null);
+  }, []);
   const dismissCrash = useCallback(() => {
     clearCrash();
     setCrash(null);
@@ -177,9 +189,24 @@ export default function App() {
               setDark={setThemeDark}
               lang={lang}
               setLang={setLang}
-              onDisconnect={() => setConn(null)}
+              onOpenConnect={() => setConnectOpen(true)}
+              onDisconnectServer={dropServer}
             />
           </StoreProvider>
+          {connectOpen ? (
+            <View style={[StyleSheet.absoluteFill, { backgroundColor: theme.bg, zIndex: 60 }]}>
+              <ConnectScreen
+                theme={theme}
+                dark={dark}
+                setDark={setThemeDark}
+                onCancel={() => setConnectOpen(false)}
+                onConnected={(c) => {
+                  setConn(c);
+                  setConnectOpen(false);
+                }}
+              />
+            </View>
+          ) : null}
           <UpdateOverlay theme={theme} />
         </DeviceFrame>
       </ErrorBoundary>
@@ -248,20 +275,29 @@ function ConnectedShell({
   setDark,
   lang,
   setLang,
-  onDisconnect,
+  onOpenConnect,
+  onDisconnectServer,
 }: {
   theme: ReturnType<typeof makeTheme>;
   dark: boolean;
   setDark: (d: boolean) => void;
   lang: Lang;
   setLang: (l: Lang) => void;
-  onDisconnect: () => void;
+  onOpenConnect: () => void;
+  onDisconnectServer: () => void;
 }) {
-  const store = useStore();
   const insets = useSafeAreaInsets();
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg, paddingTop: insets.top }}>
-      <ChatScreen theme={theme} dark={dark} setDark={setDark} lang={lang} setLang={setLang} />
+      <ChatScreen
+        theme={theme}
+        dark={dark}
+        setDark={setDark}
+        lang={lang}
+        setLang={setLang}
+        onOpenConnect={onOpenConnect}
+        onDisconnectServer={onDisconnectServer}
+      />
     </View>
   );
 }
@@ -292,6 +328,7 @@ function ConnectingView({ theme, error, retry, onDisconnect }: { theme: ReturnTy
 function ConnectScreen({
   theme,
   onConnected,
+  onCancel,
   dark,
   setDark,
 }: {
@@ -299,6 +336,8 @@ function ConnectScreen({
   dark: boolean;
   setDark: (d: boolean) => void;
   onConnected: (c: Connection) => void;
+  /** The screen is reached from Settings now, so it has to be leaveable. */
+  onCancel: () => void;
 }) {
   const [host, setHost] = useState("");
   const [username, setUsername] = useState("opencode");
@@ -374,6 +413,10 @@ function ConnectScreen({
             }}
           >
             {busy ? <ActivityIndicator color="#ffffff" /> : <Text style={{ color: "#fff", fontSize: 14.5, fontWeight: "600" }}>{t("app.connect.action")}</Text>}
+          </Pressable>
+
+          <Pressable onPress={onCancel} style={{ marginTop: 2, alignItems: "center", paddingVertical: 8 }}>
+            <Text style={{ color: theme.muted, fontSize: 13.5 }}>{t("common.cancel")}</Text>
           </Pressable>
 
           <Pressable onPress={() => setDark(!dark)} style={{ marginTop: 6, alignItems: "center" }}>

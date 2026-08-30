@@ -38,12 +38,16 @@ export function ChatScreen({
   setDark,
   lang,
   setLang,
+  onOpenConnect,
+  onDisconnectServer,
 }: {
   theme: Theme;
   dark: boolean;
   setDark: (d: boolean) => void;
   lang: Lang;
   setLang: (l: Lang) => void;
+  onOpenConnect: () => void;
+  onDisconnectServer: () => void;
 }) {
   const store = useStore();
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -289,6 +293,11 @@ export function ChatScreen({
         setLang={setLang}
         open={settingsOpen}
         onClose={() => setSettingsOpen(false)}
+        onOpenConnect={() => {
+          setSettingsOpen(false);
+          onOpenConnect();
+        }}
+        onDisconnectServer={onDisconnectServer}
       />{helpOpen ? (
         <View style={[StyleSheet.absoluteFill, { zIndex: 45, backgroundColor: theme.scrim, alignItems: "center", justifyContent: "center", padding: 24 }]}>
           <View style={{ width: "100%", maxWidth: 380, backgroundColor: theme.bg, borderRadius: 12, padding: 18 }}>

@@ -237,6 +237,8 @@ const EN: Record<string, string> = {
   "settings.server.connected": "Connected — sessions and tools go through the server.",
   "settings.server.optional": "Optional. Needed to work with projects on the PC.",
   "settings.server.run": "Run this on the PC and enter its address on the local network:",
+  "settings.server.connect": "Connect to a server",
+  "settings.server.disconnect": "Disconnect from the server",
 
   "settings.providers.sourceKey": "API key",
   "settings.providers.sourceCustom": "Custom",
@@ -715,6 +717,8 @@ const RU: Record<string, string> = {
   "settings.server.connected": "Подключено — сессии и инструменты идут через сервер.",
   "settings.server.optional": "Необязательно. Нужен для работы с проектами на ПК.",
   "settings.server.run": "Запустите на ПК и укажите его адрес в локальной сети:",
+  "settings.server.connect": "Подключиться к серверу",
+  "settings.server.disconnect": "Отключиться от сервера",
 
   "settings.providers.sourceKey": "Ключ API",
   "settings.providers.sourceCustom": "Пользовательский",
