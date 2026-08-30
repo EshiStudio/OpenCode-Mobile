@@ -313,13 +313,13 @@ const EN: Record<string, string> = {
   "ai.state.localOff": "local work is disabled",
   "ai.state.diskOn": "cloud storage is CONNECTED ({names})",
   "ai.state.diskOff": "no cloud storage is connected",
-  "ai.state.project": " The working folder is the project \"{name}\" in {storage}, at {path}. Work there unless told otherwise.",
+  "ai.state.project": " The working folder is the project \"{name}\" in {storage}, at {path}. Tool paths are relative to it, so \"\" is that folder itself — do not repeat {path} in a path.",
   "ai.prompt.localOn":
     "Local work is enabled. Use write_file, make_dir, list_dir, read_file and delete_path to work with files in the app's working folder on the device. Use relative paths, for example notes/todo.md. download_url fetches a file by link, and save_to_device hands the finished file to the phone's storage — the user picks the folder.",
   "ai.prompt.localOff":
     "Local work is disabled: you CANNOT create files or folders on the device. If the user asks to create, save or copy something locally, reply that local work is turned off and ask them to connect a cloud drive in the app settings.",
   "ai.prompt.diskOn":
-    "Cloud storage is connected ({names}): use disk_write_file, disk_make_dir, disk_list, disk_read_file and disk_delete. Give paths relative to the working folder on the disk. When more than one storage is attached, disk_list takes a cloud argument to choose between them.",
+    "Cloud storage is connected ({names}): use disk_write_file, disk_make_dir, disk_list, disk_read_file and disk_delete. Give paths relative to the current working folder. When more than one storage is attached, disk_list takes a cloud argument to choose between them.",
   "ai.prompt.diskOff":
     "No cloud storage is connected: saving to the cloud is unavailable, suggest connecting one in the settings.",
   "ai.prompt.base":
@@ -787,13 +787,13 @@ const RU: Record<string, string> = {
   "ai.state.localOff": "локальная работа выключена",
   "ai.state.diskOn": "облачное хранилище ПОДКЛЮЧЕНО ({names})",
   "ai.state.diskOff": "облачное хранилище не подключено",
-  "ai.state.project": " Рабочая папка — проект «{name}» в {storage}, путь {path}. Работайте в ней, если не сказано иное.",
+  "ai.state.project": " Рабочая папка — проект «{name}» в {storage}, путь {path}. Пути в инструментах отсчитываются от неё, пустой путь — сама эта папка; не повторяйте {path} внутри пути.",
   "ai.prompt.localOn":
     "У вас включена локальная работа. Используйте инструменты write_file, make_dir, list_dir, read_file, delete_path для работы с файлами в рабочей папке приложения на устройстве. Пути указывайте относительными, например notes/todo.md. Файл по ссылке скачивает download_url, а save_to_device отдаёт готовый файл в память телефона — папку выбирает сам пользователь.",
   "ai.prompt.localOff":
     "Локальная работа выключена: вы НЕ можете создавать файлы или папки на устройстве. Если пользователь просит создать, сохранить или скопировать что-то локально — ответьте, что функция локальной работы отключена и попросите подключить облако в настройках приложения.",
   "ai.prompt.diskOn":
-    "Облачное хранилище подключено ({names}): используйте disk_write_file, disk_make_dir, disk_list, disk_read_file, disk_delete. Пути указывайте относительно рабочей папки на диске. Если хранилищ несколько, у disk_list есть аргумент cloud для выбора между ними.",
+    "Облачное хранилище подключено ({names}): используйте disk_write_file, disk_make_dir, disk_list, disk_read_file, disk_delete. Пути указывайте относительно текущей рабочей папки. Если хранилищ несколько, у disk_list есть аргумент cloud для выбора между ними.",
   "ai.prompt.diskOff":
     "Облачное хранилище не подключено: сохранение в облако недоступно, предложите подключить его в настройках.",
   "ai.prompt.base":

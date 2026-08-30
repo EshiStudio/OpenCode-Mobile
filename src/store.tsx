@@ -894,7 +894,7 @@ export function StoreProvider({
             } catch {
               // label falls back to the bare name
             }
-            const out = await runTool(call.name, call.args, { cloudTokens, cloudRoots, preferredCloud: stateRef.current.preferredCloud, app: appControl.current });
+            const out = await runTool(call.name, call.args, { cloudTokens, cloudRoots, preferredCloud: stateRef.current.preferredCloud, projectPath: activeProject?.path, projectCloud: activeProject?.cloud, app: appControl.current });
             acc += (acc ? "\n" : "") + "· " + toolLabel(call.name, parsed);
             patch(acc, false);
             history.push({ role: "tool", tool_call_id: call.id || call.name, content: out });

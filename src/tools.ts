@@ -362,6 +362,26 @@ export function diskTools(): ToolSpec[] {
   ];
 }
 
+/**
+ * Resolves a tool path inside the active project's folder.
+ *
+ * The project used to be a label: the state note told the model where it was
+ * working while the tools still counted from the storage root. So `""` listed
+ * the root, the model got back folders it had never heard of, and lost track of
+ * where it was. Paths are now relative to the project folder.
+ *
+ * A path that already carries the project prefix is left alone. The model has
+ * no way to know which convention is in force, and it guesses both ways from
+ * one turn to the next — prepending blindly would turn its correct guess into
+ * `opencode-projects/LM/opencode-projects/LM/notes.txt`.
+ */
+export function within(base: string, rel: string): string {
+  const p = String(rel || "").replace(/^\/+/, "");
+  if (!base) return p;
+  if (p === base || p.startsWith(base + "/")) return p;
+  return p ? base + "/" + p : base;
+}
+
 export type ToolContext = {
   /**
    * Access tokens and workspace roots for every attached cloud, the legacy
@@ -372,6 +392,9 @@ export type ToolContext = {
   cloudRoots?: Record<string, string>;
   /** Storage the user picked for this work: "" for the device, else a cloud id. */
   preferredCloud?: string;
+  /** Active project's folder, and where it lives: "" for the device, else a cloud id. */
+  projectPath?: string;
+  projectCloud?: string;
   /** Lets the model change the app's own configuration. */
   app?: AppControl;
 };
@@ -383,8 +406,12 @@ export async function runTool(name: string, rawArgs: string, ctx: ToolContext = 
   } catch {
     return t("tool.err.badJson");
   }
-  const path = typeof args.path === "string" ? args.path : "";
+  const askedPath = typeof args.path === "string" ? args.path : "";
   if (isAppTool(name)) return await runAppTool(name, args, ctx.app);
+
+  // On-device tools work inside the project folder when the project lives on the
+  // device; a project held in a cloud leaves them at the app's own root.
+  const path = within(ctx.projectPath && ctx.projectCloud === "" ? ctx.projectPath : "", askedPath);
 
   try {
     switch (name) {
@@ -467,19 +494,22 @@ export async function runTool(name: string, rawArgs: string, ctx: ToolContext = 
         if (!cloud) return t("tool.out.noCloud");
         const token = tokens[cloud];
         const root = (ctx.cloudRoots || {})[cloud];
-        if (name === "disk_list") return (await Clouds.listFolder(cloud, token, path, root)).join("\n") || t("tool.out.emptyShort");
+        // Only when the project actually lives in the cloud being addressed:
+        // `cloud` may be another one the model named explicitly.
+        const at = within(ctx.projectCloud === cloud ? ctx.projectPath || "" : "", askedPath);
+        if (name === "disk_list") return (await Clouds.listFolder(cloud, token, at, root)).join("\n") || t("tool.out.emptyShort");
         if (name === "disk_make_dir") {
-          await Clouds.makeFolder(cloud, token, path, root);
-          return t("tool.out.cloudFolder", { cloud: Clouds.cloudName(cloud), path });
+          await Clouds.makeFolder(cloud, token, at, root);
+          return t("tool.out.cloudFolder", { cloud: Clouds.cloudName(cloud), path: at });
         }
-        if (name === "disk_read_file") return await Clouds.downloadText(cloud, token, path, root);
+        if (name === "disk_read_file") return await Clouds.downloadText(cloud, token, at, root);
         if (name === "disk_delete") {
-          await Clouds.deletePath(cloud, token, path, root);
-          return t("tool.out.cloudDeleted", { cloud: Clouds.cloudName(cloud), path });
+          await Clouds.deletePath(cloud, token, at, root);
+          return t("tool.out.cloudDeleted", { cloud: Clouds.cloudName(cloud), path: at });
         }
         const content = typeof args.content === "string" ? args.content : "";
-        await Clouds.uploadText(cloud, token, path, content, root);
-        return t("tool.out.cloudFile", { cloud: Clouds.cloudName(cloud), path });
+        await Clouds.uploadText(cloud, token, at, content, root);
+        return t("tool.out.cloudFile", { cloud: Clouds.cloudName(cloud), path: at });
       }
 
       default:
