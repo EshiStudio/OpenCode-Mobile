@@ -9,6 +9,7 @@ import { Lang, setLocale, t } from "./src/i18n";
 import { ChatScreen } from "./src/chat";
 import { UpdateOverlay } from "./src/update-overlay";
 import { registerBackgroundUpdateTask } from "./src/background";
+import { FoundServer, isOnWifi, ownSubnet, scanForServers } from "./src/scanner";
 import {
   loadConnection,
   loadSaved,
@@ -325,6 +326,17 @@ function ConnectingView({ theme, error, retry, onDisconnect }: { theme: ReturnTy
   );
 }
 
+/**
+ * Reaching a server used to mean typing its address by hand, the way
+ * `opencode serve`'s own log line tells you to. This finds it instead, the
+ * way joining Wi-Fi does: sweep the network, list what answers, tap one.
+ *
+ * A phone that already has a saved connection skips the scan and opens
+ * straight on the manual form, prefilled — reconnecting to a known computer
+ * should not mean re-discovering it. Scanning is for finding one for the
+ * first time, or a different one; both paths reach the same form, because
+ * a password still has to be typed in either case.
+ */
 function ConnectScreen({
   theme,
   onConnected,
@@ -339,21 +351,28 @@ function ConnectScreen({
   /** The screen is reached from Settings now, so it has to be leaveable. */
   onCancel: () => void;
 }) {
+  const [ready, setReady] = useState(false);
+  const [step, setStep] = useState<"scan" | "manual">("scan");
   const [host, setHost] = useState("");
   const [username, setUsername] = useState("opencode");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [cameFromScan, setCameFromScan] = useState(false);
 
   useEffect(() => {
     loadSaved().then((s) => {
       const envHost = process.env.EXPO_PUBLIC_OCM_HOST || "";
       if (s) {
+        // A known computer: skip discovery and go straight to reconnecting.
         setHost(s.host);
         setUsername(s.username);
+        setStep("manual");
       } else if (envHost) {
         setHost(envHost);
+        setStep("manual");
       }
+      setReady(true);
     });
   }, []);
 
@@ -381,6 +400,35 @@ function ConnectScreen({
       setBusy(false);
     }
   };
+
+  if (!ready) {
+    return (
+      <View style={[styles.connect, { backgroundColor: theme.bg }]}>
+        <ActivityIndicator color={theme.faint} />
+      </View>
+    );
+  }
+
+  if (step === "scan") {
+    return (
+      <ScanStep
+        theme={theme}
+        dark={dark}
+        setDark={setDark}
+        onCancel={onCancel}
+        onPick={(server) => {
+          setHost(`http://${server.host}:${server.port}`);
+          setCameFromScan(true);
+          setError(null);
+          setStep("manual");
+        }}
+        onManual={() => {
+          setCameFromScan(true);
+          setStep("manual");
+        }}
+      />
+    );
+  }
 
   return (
     <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={{ flex: 1 }}>
@@ -415,7 +463,13 @@ function ConnectScreen({
             {busy ? <ActivityIndicator color="#ffffff" /> : <Text style={{ color: "#fff", fontSize: 14.5, fontWeight: "600" }}>{t("app.connect.action")}</Text>}
           </Pressable>
 
-          <Pressable onPress={onCancel} style={{ marginTop: 2, alignItems: "center", paddingVertical: 8 }}>
+          <Pressable onPress={() => setStep("scan")} style={{ marginTop: 2, alignItems: "center", paddingVertical: 6 }}>
+            <Text style={{ color: theme.faint, fontSize: 13 }}>
+              {cameFromScan ? t("app.scan.back") : t("app.scan.title")}
+            </Text>
+          </Pressable>
+
+          <Pressable onPress={onCancel} style={{ alignItems: "center", paddingVertical: 8 }}>
             <Text style={{ color: theme.muted, fontSize: 13.5 }}>{t("common.cancel")}</Text>
           </Pressable>
 
@@ -427,6 +481,141 @@ function ConnectScreen({
         </View>
       </View>
     </KeyboardAvoidingView>
+  );
+}
+
+/**
+ * Sweeps the Wi-Fi network for an `opencode serve` and lists what it finds —
+ * the discovery half of connecting, kept apart from the credentials form
+ * below it because the two run on different clocks: this one is a few
+ * seconds of network I/O with progress and a cancel button, that one is a
+ * short synchronous form.
+ */
+function ScanStep({
+  theme,
+  dark,
+  setDark,
+  onCancel,
+  onPick,
+  onManual,
+}: {
+  theme: ReturnType<typeof makeTheme>;
+  dark: boolean;
+  setDark: (d: boolean) => void;
+  onCancel: () => void;
+  onPick: (server: FoundServer) => void;
+  onManual: () => void;
+}) {
+  const [phase, setPhase] = useState<"checking" | "no-wifi" | "scanning" | "done">("checking");
+  const [progress, setProgress] = useState({ done: 0, total: 0 });
+  const [found, setFound] = useState<FoundServer[]>([]);
+  // The effect below re-runs when this changes; rescan() just bumps it.
+  const [attempt, setAttempt] = useState(0);
+
+  useEffect(() => {
+    const ac = new AbortController();
+    setPhase("checking");
+    setFound([]);
+    setProgress({ done: 0, total: 0 });
+    (async () => {
+      if (!(await isOnWifi())) {
+        if (!ac.signal.aborted) setPhase("no-wifi");
+        return;
+      }
+      const subnet = await ownSubnet();
+      if (!subnet) {
+        if (!ac.signal.aborted) setPhase("no-wifi");
+        return;
+      }
+      setPhase("scanning");
+      const servers = await scanForServers(subnet, (done, total) => setProgress({ done, total }), ac.signal);
+      if (!ac.signal.aborted) {
+        setFound(servers);
+        setPhase("done");
+      }
+    })();
+    return () => ac.abort();
+  }, [attempt]);
+
+  const rescan = () => setAttempt((n) => n + 1);
+
+  return (
+    <View style={[styles.connect, { backgroundColor: theme.bg }]}>
+      <View style={{ width: "100%", maxWidth: 460, gap: 14 }}>
+        <Text style={{ fontSize: 24, fontWeight: "600", letterSpacing: -0.6, color: theme.ink }}>{t("app.scan.title")}</Text>
+        <Text style={{ fontSize: 13, color: theme.faint, lineHeight: 19 }}>{t("app.scan.intro")}</Text>
+        <Text style={{ fontFamily: "monospace", fontSize: 11.5, color: theme.muted, backgroundColor: theme.l1, padding: 10, borderRadius: 7 }}>
+          opencode serve --hostname 0.0.0.0 --port 41111
+        </Text>
+
+        {(phase === "checking" || phase === "scanning") && (
+          <View style={{ alignItems: "center", gap: 10, paddingVertical: 18 }}>
+            <ActivityIndicator color={theme.faint} />
+            <Text style={{ color: theme.muted, fontSize: 13 }}>
+              {phase === "scanning" && progress.total
+                ? `${t("app.scan.scanning")} ${progress.done}/${progress.total}`
+                : t("app.scan.scanning")}
+            </Text>
+          </View>
+        )}
+
+        {phase === "no-wifi" && <Text style={{ fontSize: 13, color: theme.err, lineHeight: 19 }}>{t("app.scan.needsWifi")}</Text>}
+
+        {phase === "done" && found.length === 0 && (
+          <Text style={{ fontSize: 13, color: theme.muted, lineHeight: 19 }}>{t("app.scan.none")}</Text>
+        )}
+
+        {phase === "done" && found.length > 0 && (
+          <View style={{ gap: 8 }}>
+            <Text style={{ fontSize: 12, color: theme.faint }}>
+              {found.length === 1 ? t("app.scan.foundOne") : t("app.scan.foundMany", { n: found.length })}
+            </Text>
+            {found.map((srv) => (
+              <Pressable
+                key={`${srv.host}:${srv.port}`}
+                onPress={() => onPick(srv)}
+                style={({ pressed }) => ({
+                  padding: 14,
+                  borderRadius: 9,
+                  borderWidth: 1,
+                  borderColor: theme.bd,
+                  backgroundColor: pressed ? theme.l2 : theme.l1,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 10,
+                })}
+              >
+                <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: theme.ok }} />
+                <Text style={{ color: theme.ink, fontSize: 14 }}>{srv.host}</Text>
+              </Pressable>
+            ))}
+          </View>
+        )}
+
+        {(phase === "no-wifi" || phase === "done") && (
+          <Pressable
+            onPress={rescan}
+            style={{ height: 44, borderRadius: 9, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: theme.bd }}
+          >
+            <Text style={{ color: theme.ink, fontSize: 13.5 }}>{t("app.scan.rescan")}</Text>
+          </Pressable>
+        )}
+
+        <Pressable onPress={onManual} style={{ alignItems: "center", paddingVertical: 8 }}>
+          <Text style={{ color: theme.faint, fontSize: 13 }}>{t("app.scan.manual")}</Text>
+        </Pressable>
+
+        <Pressable onPress={onCancel} style={{ alignItems: "center", paddingVertical: 4 }}>
+          <Text style={{ color: theme.muted, fontSize: 13.5 }}>{t("common.cancel")}</Text>
+        </Pressable>
+
+        <Pressable onPress={() => setDark(!dark)} style={{ marginTop: 2, alignItems: "center" }}>
+          <Text style={{ color: theme.faint, fontSize: 13 }}>
+            {t("app.theme.toggle", { name: t(dark ? "app.theme.dark" : "app.theme.light") })}
+          </Text>
+        </Pressable>
+      </View>
+    </View>
   );
 }
 
