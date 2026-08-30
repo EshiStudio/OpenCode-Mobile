@@ -64,3 +64,14 @@ export async function downloadText(id: CloudId, token: string, rel: string, root
   if (id === "gdrive") return await Drive.downloadText(token, rel);
   return await Dropbox.downloadText(token, rel);
 }
+
+/**
+ * Removes a file or folder. Every backend has done this all along; it simply
+ * had no way through to the tools, so the model could create on a disk it could
+ * not tidy up. Yandex moves the item to the trash rather than erasing it.
+ */
+export async function deletePath(id: CloudId, token: string, rel: string, root?: string): Promise<void> {
+  if (id === "yandex") return await Yandex.deletePath(token, rel, root);
+  if (id === "gdrive") return await Drive.deletePath(token, rel);
+  return await Dropbox.deletePath(token, rel);
+}

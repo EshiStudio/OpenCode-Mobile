@@ -167,6 +167,8 @@ export function toolLabel(name: string, args: Record<string, unknown>): string {
       return t("tool.label.diskWrite", { path });
     case "disk_read_file":
       return t("tool.label.diskRead", { path });
+    case "disk_delete":
+      return t("tool.label.diskDelete", { path });
     case "download_url":
       return t("tool.label.download", { url: typeof args.url === "string" ? args.url : path });
     case "save_to_device":
@@ -349,6 +351,14 @@ export function diskTools(): ToolSpec[] {
       parameters: { type: "object", properties: { path: strProp(t("tool.readFile.path")) }, required: ["path"] },
     },
   },
+  {
+    type: "function",
+    function: {
+      name: "disk_delete",
+      description: t("tool.diskDelete.desc"),
+      parameters: { type: "object", properties: { path: strProp(t("tool.diskDelete.path")) }, required: ["path"] },
+    },
+  },
   ];
 }
 
@@ -448,7 +458,8 @@ export async function runTool(name: string, rawArgs: string, ctx: ToolContext = 
       case "disk_list":
       case "disk_make_dir":
       case "disk_write_file":
-      case "disk_read_file": {
+      case "disk_read_file":
+      case "disk_delete": {
         const tokens = ctx.cloudTokens || {};
         const asked = typeof args.cloud === "string" ? (args.cloud as CloudId) : undefined;
         const preferred = ctx.preferredCloud && tokens[ctx.preferredCloud] ? (ctx.preferredCloud as CloudId) : undefined;
@@ -462,6 +473,10 @@ export async function runTool(name: string, rawArgs: string, ctx: ToolContext = 
           return t("tool.out.cloudFolder", { cloud: Clouds.cloudName(cloud), path });
         }
         if (name === "disk_read_file") return await Clouds.downloadText(cloud, token, path, root);
+        if (name === "disk_delete") {
+          await Clouds.deletePath(cloud, token, path, root);
+          return t("tool.out.cloudDeleted", { cloud: Clouds.cloudName(cloud), path });
+        }
         const content = typeof args.content === "string" ? args.content : "";
         await Clouds.uploadText(cloud, token, path, content, root);
         return t("tool.out.cloudFile", { cloud: Clouds.cloudName(cloud), path });

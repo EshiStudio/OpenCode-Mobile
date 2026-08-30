@@ -319,7 +319,7 @@ const EN: Record<string, string> = {
   "ai.prompt.localOff":
     "Local work is disabled: you CANNOT create files or folders on the device. If the user asks to create, save or copy something locally, reply that local work is turned off and ask them to connect a cloud drive in the app settings.",
   "ai.prompt.diskOn":
-    "Cloud storage is connected ({names}): use disk_write_file, disk_make_dir, disk_list and disk_read_file. Give paths relative to the working folder on the disk. When more than one storage is attached, disk_list takes a cloud argument to choose between them.",
+    "Cloud storage is connected ({names}): use disk_write_file, disk_make_dir, disk_list, disk_read_file and disk_delete. Give paths relative to the working folder on the disk. When more than one storage is attached, disk_list takes a cloud argument to choose between them.",
   "ai.prompt.diskOff":
     "No cloud storage is connected: saving to the cloud is unavailable, suggest connecting one in the settings.",
   "ai.prompt.base":
@@ -370,6 +370,9 @@ const EN: Record<string, string> = {
   "tool.diskWrite.content": "The file contents",
   "tool.diskRead.desc": "Read a text file from the cloud working folder.",
   "tool.diskRead.path": "Relative file path",
+  "tool.diskDelete.desc":
+    "Delete a file or folder from the cloud working folder. On Yandex Disk it goes to the trash; on the others it is removed outright. A folder goes with everything inside it, so make sure that is what was asked.",
+  "tool.diskDelete.path": "Relative path of the file or folder to delete",
 
   "tool.label.listDir": "listed files: {path}",
   "tool.label.makeDir": "folder created: {path}",
@@ -387,6 +390,7 @@ const EN: Record<string, string> = {
   "tool.label.diskMakeDir": "cloud, folder created: {path}",
   "tool.label.diskWrite": "cloud, file written: {path}",
   "tool.label.diskRead": "cloud, file read: {path}",
+  "tool.label.diskDelete": "cloud, deleted: {path}",
   "tool.label.download": "downloaded: {url}",
   "tool.label.saveToDevice": "saved to device: {path}",
 
@@ -409,6 +413,7 @@ const EN: Record<string, string> = {
   "tool.out.noCloud": "No cloud is connected. Connect one in Settings → Clouds.",
   "tool.out.cloudFolder": "Folder created in {cloud}: {path}",
   "tool.out.cloudFile": "File saved to {cloud}: {path}",
+  "tool.out.cloudDeleted": "Deleted from {cloud}: {path}",
 
   /* ----------------------------------------------------------- app tools -- */
   "apptool.status.desc":
@@ -788,7 +793,7 @@ const RU: Record<string, string> = {
   "ai.prompt.localOff":
     "Локальная работа выключена: вы НЕ можете создавать файлы или папки на устройстве. Если пользователь просит создать, сохранить или скопировать что-то локально — ответьте, что функция локальной работы отключена и попросите подключить облако в настройках приложения.",
   "ai.prompt.diskOn":
-    "Облачное хранилище подключено ({names}): используйте disk_write_file, disk_make_dir, disk_list, disk_read_file. Пути указывайте относительно рабочей папки на диске. Если хранилищ несколько, у disk_list есть аргумент cloud для выбора между ними.",
+    "Облачное хранилище подключено ({names}): используйте disk_write_file, disk_make_dir, disk_list, disk_read_file, disk_delete. Пути указывайте относительно рабочей папки на диске. Если хранилищ несколько, у disk_list есть аргумент cloud для выбора между ними.",
   "ai.prompt.diskOff":
     "Облачное хранилище не подключено: сохранение в облако недоступно, предложите подключить его в настройках.",
   "ai.prompt.base":
@@ -838,6 +843,9 @@ const RU: Record<string, string> = {
   "tool.diskWrite.content": "Содержимое файла",
   "tool.diskRead.desc": "Прочитать текстовый файл из рабочей папки облака.",
   "tool.diskRead.path": "Относительный путь файла",
+  "tool.diskDelete.desc":
+    "Удалить файл или папку из рабочей папки облака. На Яндекс Диске уходит в корзину, в остальных удаляется сразу. Папка удаляется вместе со всем содержимым — убедитесь, что просили именно это.",
+  "tool.diskDelete.path": "Относительный путь файла или папки для удаления",
 
   "tool.label.listDir": "список файлов: {path}",
   "tool.label.makeDir": "создана папка: {path}",
@@ -855,6 +863,7 @@ const RU: Record<string, string> = {
   "tool.label.diskMakeDir": "облако, создана папка: {path}",
   "tool.label.diskWrite": "облако, записан файл: {path}",
   "tool.label.diskRead": "облако, прочитан файл: {path}",
+  "tool.label.diskDelete": "облако, удалено: {path}",
   "tool.label.download": "скачано: {url}",
   "tool.label.saveToDevice": "сохранено на устройство: {path}",
 
@@ -877,6 +886,7 @@ const RU: Record<string, string> = {
   "tool.out.noCloud": "Ни одно облако не подключено. Подключите его в Настройках → Облака.",
   "tool.out.cloudFolder": "Папка создана в {cloud}: {path}",
   "tool.out.cloudFile": "Файл сохранён в {cloud}: {path}",
+  "tool.out.cloudDeleted": "Удалено из {cloud}: {path}",
 
   "apptool.status.desc":
     "Что сейчас подключено в приложении: провайдеры, облака, активная модель, переключатели. Секреты не возвращает.",
