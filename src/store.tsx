@@ -105,6 +105,9 @@ export type StoreState = {
   messages: Record<string, StoredMessage[]>;
   models: ProviderWithModels[];
   projects: Project[];
+  /** Server project the sessions list is scoped to; "" means every session. */
+  activeServerProject: string;
+  setActiveServerProject: (id: string) => void;
   modelId: string | null;
   providerId: string | null;
   variants: EffortVariant[];
@@ -229,6 +232,7 @@ export function StoreProvider({
     messages: {} as Record<string, StoredMessage[]>,
     models: [] as ProviderWithModels[],
     projects: [] as Project[],
+    activeServerProject: "",
     modelId: null as string | null,
     providerId: null as string | null,
     variants: ["default", "low", "high", "max"] as EffortVariant[],
@@ -431,12 +435,34 @@ export function StoreProvider({
       subRef.current?.abort();
       try {
         const h = await apiRef.current.health();
-        const [sessions, statuses, providers, projects] = await Promise.all([
-          apiRef.current.listSessions(),
-          apiRef.current.getSessionStatus(),
+        const [providers, projects] = await Promise.all([
           apiRef.current.listProviders().catch(() => ({ providers: [] as ProviderWithModels[], default: {} as Record<string, string> })),
           apiRef.current.listProjects().catch(() => []),
         ]);
+
+        // The session list is scoped to a directory — with none, the server
+        // answers only for wherever it was launched from, not "every project."
+        // A project with real history in it (twelve sessions, measured) comes
+        // back empty until asked by its own worktree. So it is asked once per
+        // project and merged, deduped by id in case a session ever matches more
+        // than one project's scope.
+        const perProject = await Promise.all(
+          projects
+            .filter((p) => p.worktree)
+            .map((p) =>
+              Promise.all([
+                apiRef.current!.listSessions(p.worktree).catch(() => [] as SessionInfo[]),
+                apiRef.current!.getSessionStatus(p.worktree).catch(() => ({}) as Record<string, SessionStatus>),
+              ]),
+            ),
+        );
+        const sessionsByID = new Map<string, SessionInfo>();
+        const statuses: Record<string, SessionStatus> = {};
+        for (const [list, st] of perProject) {
+          for (const s of list) sessionsByID.set(s.id, s);
+          Object.assign(statuses, st);
+        }
+        const sessions = [...sessionsByID.values()];
         const normalizedModels: ProviderWithModels[] = (providers.providers || []).map((p) => ({
           id: p.id,
           name: p.name,
@@ -510,6 +536,8 @@ export function StoreProvider({
       messages: {},
       permissions: [],
       activeId: null,
+      projects: [],
+      activeServerProject: "",
     }));
   }, []);
 
@@ -556,7 +584,8 @@ export function StoreProvider({
       return sid;
     }
     if (!apiRef.current) throw new Error("no api");
-    const s = await apiRef.current.createSession();
+    const scoped = state.projects.find((p) => p.id === state.activeServerProject);
+    const s = await apiRef.current.createSession(undefined, scoped?.worktree);
     setState((st) => ({
       ...st,
       sessions: [s, ...st.sessions],
@@ -564,7 +593,7 @@ export function StoreProvider({
     }));
     registerRef.current(s.id);
     return s.id;
-  }, [state.connected]);
+  }, [state.connected, state.activeServerProject, state.projects]);
 
   const send = useCallback(
     async (text: string, attach?: Attachment[]) => {
@@ -709,6 +738,10 @@ export function StoreProvider({
       saveLocal(next);
       return { ...st, local: next };
     });
+  }, []);
+
+  const setActiveServerProject = useCallback((id: string) => {
+    setState((s) => ({ ...s, activeServerProject: id }));
   }, []);
 
   const localAcRef = useRef<AbortController | null>(null);
@@ -1191,17 +1224,32 @@ export function StoreProvider({
 
   const refresh = useCallback(async () => {
     if (!apiRef.current) return;
-    const [sessions, statuses] = await Promise.all([
-      apiRef.current.listSessions(),
-      apiRef.current.getSessionStatus(),
-    ]);
+    // Same scoping as connect(): one request per project, or every project
+    // but the server's own launch directory silently goes missing every 15s.
+    const perProject = await Promise.all(
+      state.projects
+        .filter((p) => p.worktree)
+        .map((p) =>
+          Promise.all([
+            apiRef.current!.listSessions(p.worktree).catch(() => [] as SessionInfo[]),
+            apiRef.current!.getSessionStatus(p.worktree).catch(() => ({}) as Record<string, SessionStatus>),
+          ]),
+        ),
+    );
+    const sessionsByID = new Map<string, SessionInfo>();
+    const statuses: Record<string, SessionStatus> = {};
+    for (const [list, st] of perProject) {
+      for (const s of list) sessionsByID.set(s.id, s);
+      Object.assign(statuses, st);
+    }
+    const sessions = [...sessionsByID.values()];
     setState((s) => ({
       ...s,
       sessions: sessions.sort((a, b) => (b.time?.updated || 0) - (a.time?.updated || 0)),
       statuses,
       busy: Object.values(statuses).some((st) => st.type === "busy" || st.type === "retry"),
     }));
-  }, []);
+  }, [state.projects]);
 
   const closeMessage = useCallback((sid: string, mid: string) => {
     setState((s) => {
@@ -1373,6 +1421,8 @@ export function StoreProvider({
     createProject,
     removeProject,
     setActiveProject,
+    activeServerProject: state.activeServerProject,
+    setActiveServerProject,
     localAbort: () => localAcRef.current?.abort(),
     clearError: () => setState((s) => ({ ...s, error: null })),
   };

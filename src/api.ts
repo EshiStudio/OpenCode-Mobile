@@ -82,16 +82,28 @@ export class Api {
     return this.request<{ healthy: boolean; version: string }>("/global/health");
   }
 
-  listSessions() {
-    return this.request<SessionInfo[]>("/session");
+  /**
+   * `GET /session` is scoped to a directory — measured live, not documented:
+   * with no `directory`, the server lists only sessions that live in wherever
+   * it was launched from (this app's own "opencode-shared" sandbox), and a
+   * project with real work in it — twelve sessions, in one case — returns
+   * nothing until its own worktree is passed. There is no flag for "every
+   * project"; the caller fetches once per project and merges.
+   */
+  listSessions(directory?: string) {
+    const q = directory ? `?directory=${encodeURIComponent(directory)}` : "";
+    return this.request<SessionInfo[]>(`/session${q}`);
   }
 
-  getSessionStatus() {
-    return this.request<Record<string, SessionStatus>>("/session/status");
+  getSessionStatus(directory?: string) {
+    const q = directory ? `?directory=${encodeURIComponent(directory)}` : "";
+    return this.request<Record<string, SessionStatus>>(`/session/status${q}`);
   }
 
-  createSession(title?: string) {
-    return this.request<SessionInfo>("/session", {
+  /** `directory` scopes the session to a server project — a query param, not a body field: the server rejects it as a body field with 400. */
+  createSession(title?: string, directory?: string) {
+    const q = directory ? `?directory=${encodeURIComponent(directory)}` : "";
+    return this.request<SessionInfo>(`/session${q}`, {
       method: "POST",
       body: JSON.stringify(title ? { title } : {}),
     });

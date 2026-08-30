@@ -4,7 +4,7 @@ import { Animated, Pressable, ScrollView, StyleSheet, Text, TextInput, View } fr
 import { Icon } from "./icons";
 import { Theme } from "./theme";
 import { useStore } from "./store";
-import { SessionInfo } from "./types";
+import { Project, SessionInfo } from "./types";
 import { CLOUD_IDS, cloudName } from "./clouds";
 import { useDrawerSwipe } from "./swipe";
 
@@ -24,15 +24,21 @@ function dayLabel(when: number): string {
 }
 
 /**
- * Sessions worth showing, newest first. Server sessions are filtered to the
- * ones this device started; on-device sessions live somewhere else entirely.
- * Shared so the panel and the title's quick-pick can never drift apart.
+ * Sessions worth showing, newest first. On-device sessions live somewhere
+ * else entirely. Shared so the panel and the title's quick-pick can never
+ * drift apart.
+ *
+ * Server sessions used to be filtered to `registered` — the ones this exact
+ * phone had started — which hid the whole point of connecting to a
+ * computer: picking up sessions and projects that already exist there. All
+ * of them show now; `registered` still exists for whatever else keys off
+ * "did this device start it."
  */
 export function visibleSessions(store: ReturnType<typeof useStore>, projectID?: string): SessionInfo[] {
-  const scope = projectID === undefined ? store.local.activeProject : projectID;
+  const scope = projectID === undefined ? (store.connected ? store.activeServerProject : store.local.activeProject) : projectID;
   const projects = store.local.projects;
   const items: SessionInfo[] = store.connected
-    ? store.sessions.filter((s) => store.registered.includes(s.id))
+    ? store.sessions.filter((sn) => !scope || sn.projectID === scope)
     : store.local.sessions
         .filter((l) => !scope || l.projectID === scope)
         .map(
@@ -207,6 +213,97 @@ function ProjectStrip({
   );
 }
 
+/**
+ * The server's own projects — one per directory opencode has ever been
+ * pointed at on that computer, source of truth is the server itself. Tap
+ * scopes the session list to it; long-press shows its sessions and a way to
+ * start another one there. There is nothing to create or forget here: unlike
+ * device projects, the phone did not make these and cannot delete them.
+ */
+function ServerProjectStrip({
+  theme,
+  onNewSession,
+  onOpenSession,
+}: {
+  theme: Theme;
+  onNewSession: () => void;
+  onOpenSession: (id: string) => void;
+}) {
+  const store = useStore();
+  const [expanded, setExpanded] = useState<string | null>(null);
+  const active = store.activeServerProject;
+
+  const label = (p: Project): string => {
+    const name = baseName(p.worktree);
+    return name || p.worktree || p.id;
+  };
+
+  return (
+    <View style={s.projects}>
+      <View style={s.projHead}>
+        <Text style={{ fontSize: 11, letterSpacing: 1.1, color: theme.faint }}>
+          {t("project.title").toUpperCase()}
+        </Text>
+      </View>
+
+      {store.projects.length === 0 ? (
+        <Text style={{ fontSize: 11.5, color: theme.faint, paddingVertical: 6 }}>{t("project.none")}</Text>
+      ) : null}
+
+      {store.projects.map((p) => {
+        const on = p.id === active;
+        const open = expanded === p.id;
+        const own = visibleSessions(store, p.id);
+        return (
+          <View key={p.id}>
+            <Pressable
+              onPress={() => store.setActiveServerProject(on ? "" : p.id)}
+              onLongPress={() => setExpanded(open ? null : p.id)}
+              delayLongPress={280}
+              style={({ pressed }) => [s.projRow, { backgroundColor: on || pressed ? theme.l2 : "transparent" }]}
+            >
+              <View style={[s.projMark, { backgroundColor: theme.avBg }]}>
+                <Text style={{ color: theme.avFg, fontSize: 11, fontWeight: "600" }}>
+                  {label(p)[0]?.toUpperCase() || "?"}
+                </Text>
+              </View>
+              <Text style={{ flex: 1, fontSize: 13, color: theme.ink }} numberOfLines={1}>
+                {label(p)}
+              </Text>
+              {p.vcs ? <Icon name="code-lines" size={13} color={theme.faint} /> : null}
+            </Pressable>
+
+            {open ? (
+              <View style={{ paddingLeft: 30, paddingBottom: 6 }}>
+                {own.map((ses) => (
+                  <Pressable
+                    key={ses.id}
+                    onPress={() => onOpenSession(ses.id)}
+                    style={({ pressed }) => [s.projSub, { backgroundColor: pressed ? theme.l2 : "transparent" }]}
+                  >
+                    <Text style={{ fontSize: 12.5, color: theme.muted }} numberOfLines={1}>
+                      {ses.title || t("chat.newSession")}
+                    </Text>
+                  </Pressable>
+                ))}
+                <Pressable
+                  onPress={() => {
+                    store.setActiveServerProject(p.id);
+                    onNewSession();
+                  }}
+                  style={({ pressed }) => [s.projSub, { backgroundColor: pressed ? theme.l2 : "transparent" }]}
+                >
+                  <Text style={{ fontSize: 12.5, color: theme.acc }}>+ {t("chat.newSession")}</Text>
+                </Pressable>
+              </View>
+            ) : null}
+          </View>
+        );
+      })}
+    </View>
+  );
+}
+
 function ChoiceChip({
   theme,
   label,
@@ -305,7 +402,16 @@ export function SessionsPanel({
           </Pressable>
         </View>
 
-        {!store.connected ? (
+        {store.connected ? (
+          <ServerProjectStrip
+            theme={theme}
+            onNewSession={onNew}
+            onOpenSession={(id) => {
+              store.openSession(id);
+              onClose();
+            }}
+          />
+        ) : (
           <ProjectStrip
             theme={theme}
             onNewSession={onNew}
@@ -314,7 +420,7 @@ export function SessionsPanel({
               onClose();
             }}
           />
-        ) : null}
+        )}
 
         <View style={s.searchWrap}>
           <View style={[s.search, { borderColor: theme.bdSoft }]}>

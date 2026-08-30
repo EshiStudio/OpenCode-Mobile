@@ -3,7 +3,7 @@ const path = require('path');
 
 const token = process.env.GITHUB_TOKEN;
 const repo = "EshiStudio/OpenCode-Mobile";
-const tag = "v1.6.0";
+const tag = "v1.6.1";
 const apkPath = path.join(__dirname, '../android/app/build/outputs/apk/release/app-release.apk');
 
 async function createOrUpdateRelease() {
