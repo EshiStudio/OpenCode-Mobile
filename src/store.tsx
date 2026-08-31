@@ -1264,10 +1264,10 @@ export function StoreProvider({
     });
   }, []);
 
-  const startedRef = useRef(false);
+  const lastConnRef = useRef<Connection | null>(null);
   useEffect(() => {
-    if (conn && !startedRef.current) {
-      startedRef.current = true;
+    if (conn && lastConnRef.current !== conn) {
+      lastConnRef.current = conn;
       connect(conn);
     }
     loadRegistered().then((ids) => {
