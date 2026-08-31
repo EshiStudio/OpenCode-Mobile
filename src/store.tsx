@@ -298,8 +298,29 @@ export function StoreProvider({
       knownRef.current.messages[sessionID] = {};
       list.forEach((m) => (knownRef.current.messages[sessionID][m.info.id] = m));
       knownRef.current.order[sessionID] = list.map((m) => m.info.id);
-      if (prev === next) return;
-      setState((s) => ({ ...s, messages: { ...s.messages, [sessionID]: list } }));
+      // The busy/thinking indicator otherwise depends entirely on
+      // "session.idle" arriving over the same unreliable event stream --
+      // a live reply had visibly finished (last message is a completed
+      // assistant turn) while the spinner kept going for however long the
+      // next reconnect took. The message list already carries that
+      // completion timestamp, so read idle off it directly instead of
+      // waiting on a second, separate signal.
+      const last = list[list.length - 1];
+      const settled = last?.info.role === "assistant" && !!last.info.time?.completed;
+      if (prev === next && !settled) return;
+      setState((s) => {
+        const messages = prev === next ? s.messages : { ...s.messages, [sessionID]: list };
+        if (!settled || s.statuses[sessionID]?.type === "idle") {
+          return { ...s, messages };
+        }
+        const statuses = { ...s.statuses, [sessionID]: { type: "idle" } as SessionStatus };
+        return {
+          ...s,
+          messages,
+          statuses,
+          busy: Object.values(statuses).some((st) => st.type === "busy" || st.type === "retry"),
+        };
+      });
     },
     [],
   );
