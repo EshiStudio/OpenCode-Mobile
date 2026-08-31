@@ -33,14 +33,24 @@ function dayLabel(when: number): string {
  * computer: picking up sessions and projects that already exist there. All
  * of them show now; `registered` still exists for whatever else keys off
  * "did this device start it."
+ *
+ * `activeServerProject` doubles as "which project a new session lands in"
+ * (see the composer's project picker and the drawer's own new-session
+ * button) — it must NOT also gate the general session list, or picking a
+ * project for your next message silently hides every other project's
+ * sessions, including ones just created on the computer. Only an *explicit*
+ * `projectID` (the drawer's own per-project sublist) filters server
+ * sessions; the unscoped call always shows all of them.
  */
 export function visibleSessions(store: ReturnType<typeof useStore>, projectID?: string): SessionInfo[] {
-  const scope = projectID === undefined ? (store.connected ? store.activeServerProject : store.local.activeProject) : projectID;
   const projects = store.local.projects;
   const items: SessionInfo[] = store.connected
-    ? store.sessions.filter((sn) => !scope || sn.projectID === scope)
+    ? store.sessions.filter((sn) => projectID === undefined || sn.projectID === projectID)
     : store.local.sessions
-        .filter((l) => !scope || l.projectID === scope)
+        .filter((l) => {
+          const scope = projectID === undefined ? store.local.activeProject : projectID;
+          return !scope || l.projectID === scope;
+        })
         .map(
           (l) =>
             ({

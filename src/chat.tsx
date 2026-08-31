@@ -709,8 +709,6 @@ function modelDisplayName(models: ProviderWithModels[], providerID: string | nul
   return modelID;
 }
 
-const OCM_PROVIDERS = ["opencode", "opencode-go"];
-
 /**
  * Models for on-device mode. Providers answer /models over the network, so fall
  * back to the preset's default id until that list arrives.
@@ -746,7 +744,6 @@ function localModelRows(
 function modelRows(models: ProviderWithModels[], providerID: string | null, modelID: string | null): SheetRow[] {
   const rows: SheetRow[] = [];
   for (const p of models) {
-    if (!OCM_PROVIDERS.includes(p.id)) continue;
     const names = p.models.map((m) => ({
       id: `${p.id}::${m.id}`,
       name: m.name,
