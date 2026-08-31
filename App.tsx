@@ -454,16 +454,14 @@ function ConnectScreen({
   };
 
   // While the code screen is up for a picked device, listen for the push
-  // and fill + submit the code the moment it lands -- typing it by hand
-  // is the fallback, not the intended path.
+  // just to know it landed -- the code itself is read off the
+  // notification and typed into the boxes by hand, on purpose.
   useEffect(() => {
     if (!pickedFromList || step !== "manual") return;
     const sub = Notifications.addNotificationReceivedListener((n) => {
       const incoming = n.request.content.data?.code;
       if (typeof incoming === "string" && incoming.length === 6) {
-        setCode(incoming);
         setPairStatus("received");
-        connect(incoming);
       }
     });
     return () => sub.remove();
@@ -529,6 +527,9 @@ function ConnectScreen({
                 <CodeInput theme={theme} value={code} onChange={setCode} />
                 {pairStatus === "sent" ? (
                   <Text style={{ fontSize: 12, color: theme.faint }}>{t("app.connect.codeSent")}</Text>
+                ) : null}
+                {pairStatus === "received" ? (
+                  <Text style={{ fontSize: 12, color: theme.ok }}>{t("app.connect.codeReceived")}</Text>
                 ) : null}
                 {pairStatus === "failed" ? (
                   <Text style={{ fontSize: 12, color: theme.err }}>{t("app.connect.codePushFailed")}</Text>
