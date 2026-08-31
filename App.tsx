@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import { SafeAreaProvider, useSafeAreaInsets } from "react-native-safe-area-context";
@@ -359,6 +359,15 @@ function ConnectScreen({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [cameFromScan, setCameFromScan] = useState(false);
+  /**
+   * Picking a computer off the scan already answers "which machine" and "is
+   * it really running opencode" — asking for a username too would just be
+   * re-deriving what the pill already shows. A short code stands in for the
+   * password in that case; typing everything by hand (or reconnecting to a
+   * saved computer) still needs the full host/username/password form.
+   */
+  const [pickedFromList, setPickedFromList] = useState(false);
+  const [code, setCode] = useState("");
 
   useEffect(() => {
     loadSaved().then((s) => {
@@ -386,7 +395,7 @@ function ConnectScreen({
     const c: Connection = {
       host: host.trim().replace(/\/+$/, ""),
       username: username.trim() || "opencode",
-      password,
+      password: pickedFromList ? code.trim() : password,
     };
     try {
       const { Api } = await import("./src/api");
@@ -419,11 +428,14 @@ function ConnectScreen({
         onPick={(server) => {
           setHost(`http://${server.host}:${server.port}`);
           setCameFromScan(true);
+          setPickedFromList(true);
+          setCode("");
           setError(null);
           setStep("manual");
         }}
         onManual={() => {
           setCameFromScan(true);
+          setPickedFromList(false);
           setStep("manual");
         }}
       />
@@ -442,9 +454,21 @@ function ConnectScreen({
             opencode serve --hostname 0.0.0.0 --port 41111
           </Text>
 
-          <Field theme={theme} label={t("app.connect.host")} value={host} onChange={setHost} placeholder="http://192.168.1.20:41111" autoCapitalize="none" />
-          <Field theme={theme} label={t("app.connect.user")} value={username} onChange={setUsername} placeholder="opencode" autoCapitalize="none" />
-          <Field theme={theme} label={t("app.connect.password")} value={password} onChange={setPassword} placeholder="••••••••" secure />
+          {pickedFromList ? (
+            <>
+              <DevicePill theme={theme} host={host.replace(/^https?:\/\//, "")} />
+              <View style={{ gap: 6 }}>
+                <Text style={{ fontSize: 11.5, color: theme.faint }}>{t("app.connect.code")}</Text>
+                <CodeInput theme={theme} value={code} onChange={setCode} />
+              </View>
+            </>
+          ) : (
+            <>
+              <Field theme={theme} label={t("app.connect.host")} value={host} onChange={setHost} placeholder="http://192.168.1.20:41111" autoCapitalize="none" />
+              <Field theme={theme} label={t("app.connect.user")} value={username} onChange={setUsername} placeholder="opencode" autoCapitalize="none" />
+              <Field theme={theme} label={t("app.connect.password")} value={password} onChange={setPassword} placeholder="••••••••" secure />
+            </>
+          )}
 
           {error ? <Text style={{ fontSize: 12.5, color: theme.err }}>{error}</Text> : null}
 
@@ -615,6 +639,81 @@ function ScanStep({
           </Text>
         </Pressable>
       </View>
+    </View>
+  );
+}
+
+/** The chosen computer, read-only — same look as its row in the scan list. */
+function DevicePill({ theme, host }: { theme: ReturnType<typeof makeTheme>; host: string }) {
+  return (
+    <View
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 10,
+        padding: 14,
+        borderRadius: 9,
+        borderWidth: 1,
+        borderColor: theme.bd,
+        backgroundColor: theme.l1,
+      }}
+    >
+      <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: theme.ok }} />
+      <Text style={{ color: theme.ink, fontSize: 14 }}>{host}</Text>
+    </View>
+  );
+}
+
+/**
+ * Six single-character boxes standing in for the password field once a
+ * computer has already been picked. Typing advances focus forward;
+ * backspace on an empty box steps back — the usual OTP-input feel.
+ */
+function CodeInput({ theme, value, onChange }: { theme: ReturnType<typeof makeTheme>; value: string; onChange: (v: string) => void }) {
+  const refs = useRef<Array<TextInput | null>>([]);
+  const chars = Array.from({ length: 6 }, (_, i) => value[i] || "");
+
+  const setAt = (i: number, ch: string) => {
+    const next = chars.slice();
+    next[i] = ch;
+    onChange(next.join(""));
+  };
+
+  return (
+    <View style={{ flexDirection: "row", gap: 8 }}>
+      {chars.map((ch, i) => (
+        <TextInput
+          key={i}
+          ref={(r) => {
+            refs.current[i] = r;
+          }}
+          value={ch}
+          onChangeText={(t) => {
+            const clean = t.slice(-1).toUpperCase();
+            setAt(i, clean);
+            if (clean && i < 5) refs.current[i + 1]?.focus();
+          }}
+          onKeyPress={({ nativeEvent }) => {
+            if (nativeEvent.key === "Backspace" && !chars[i] && i > 0) {
+              refs.current[i - 1]?.focus();
+            }
+          }}
+          autoCapitalize="characters"
+          autoCorrect={false}
+          maxLength={1}
+          style={{
+            flex: 1,
+            height: 52,
+            borderRadius: 8,
+            borderWidth: 1,
+            borderColor: theme.bd,
+            textAlign: "center",
+            fontSize: 19,
+            fontWeight: "600",
+            color: theme.ink,
+          }}
+        />
+      ))}
     </View>
   );
 }
