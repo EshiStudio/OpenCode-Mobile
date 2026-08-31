@@ -36,17 +36,41 @@ cd android && ./gradlew assembleRelease
 
 The APK lands in `android/app/build/outputs/apk/release/`. Note that release is signed with Expo's debug keystore — generate your own before publishing to a store.
 
-### The opencode server on a computer
+### Connecting to a computer
+
+What this needs, at minimum:
+
+- a computer on the same Wi-Fi network running `opencode serve`;
+- the app installed on the phone (sideloaded from a [release](../../releases) — it isn't on the Play Store).
 
 ```bash
 opencode serve --hostname 0.0.0.0 --port 41111
 ```
 
-Connect using the computer's address on the local network. The password comes from `OPENCODE_SERVER_PASSWORD`; `scripts/start-server.ps1` is a small helper.
+Open Settings → "Server on the computer" → Connect, either scan for the
+computer or enter its address by hand, and log in with the username and
+`OPENCODE_SERVER_PASSWORD` set on that `opencode serve`. That's the whole
+setup — everything below is optional.
+
+#### Optional: pairing code by push notification
+
+Picking a computer off the scan can also skip typing the password: it asks
+[`server/pair-proxy`](server/pair-proxy) — a small companion process, not
+`opencode serve` itself — to generate a fresh 6-character code and push it
+to the phone. The code is still typed in by hand (on purpose — see that
+folder's README), but there's no long password to remember or type.
+
+This needs two extra one-time things, both free: a Firebase project (for
+the app to receive pushes at all) and an Expo/EAS account (for this repo's
+build to send them). See [`server/pair-proxy/README.md`](server/pair-proxy/README.md)
+for the full setup. Skip it entirely and the plain password flow above
+still works exactly the same.
 
 ## Keys and data
 
 The repository contains no API keys, tokens or client IDs. Everything the user enters stays on the device in `expo-secure-store` and `AsyncStorage`. Signing in to Google Drive and Dropbox requires your own OAuth client IDs, entered in the app settings.
+
+`google-services.json` (Firebase, for push notifications) is not in the repository either — the app builds and runs fine without it, just without the push-pairing flow described above. Drop your own at the repo root before `expo prebuild` to enable it.
 
 ## Localisation
 
@@ -67,6 +91,7 @@ To add a language: add a table to `src/i18n.ts`, list it in `LANGS`, and the set
 | `src/media.ts` | file picking, attachments, saving to the device |
 | `src/i18n.ts` | translations and the active language |
 | `src/clouds.ts`, `src/yandex.ts`, `src/gdrive.ts`, `src/dropbox.ts` | cloud storage |
+| `server/pair-proxy` | optional companion process for the push-notification pairing flow |
 
 ## Licence
 
