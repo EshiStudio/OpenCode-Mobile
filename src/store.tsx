@@ -188,6 +188,7 @@ export type StoreState = {
   renameSession: (id: string, title: string) => void;
   deleteSession: (id: string) => void;
   refresh: () => Promise<void>;
+  refreshMessages: (sessionID: string) => Promise<void>;
   closeMessage: (sessionId: string, messageId: string) => void;
 };
 
@@ -280,12 +281,24 @@ export function StoreProvider({
     });
   }, []);
 
+  /** A cheap fingerprint of a message list: cheaper than a deep-equal, and
+   * good enough to skip a re-render when nothing actually changed (this
+   * runs on a 2s poll while a chat is open, see chat.tsx). */
+  const messagesFingerprint = (list: StoredMessage[]) =>
+    list.map((m) => `${m.info.id}:${m.parts.length}:${m.info.time?.completed || 0}`).join("|");
+
   const refreshMessages = useCallback(
     async (sessionID: string) => {
       if (!apiRef.current) return;
       const list = await apiRef.current.getMessages(sessionID);
+      const prev = knownRef.current.order[sessionID]
+        ? messagesFingerprint((knownRef.current.order[sessionID] || []).map((id) => knownRef.current.messages[sessionID][id]).filter(Boolean))
+        : null;
+      const next = messagesFingerprint(list);
       knownRef.current.messages[sessionID] = {};
       list.forEach((m) => (knownRef.current.messages[sessionID][m.info.id] = m));
+      knownRef.current.order[sessionID] = list.map((m) => m.info.id);
+      if (prev === next) return;
       setState((s) => ({ ...s, messages: { ...s.messages, [sessionID]: list } }));
     },
     [],
@@ -548,11 +561,15 @@ export function StoreProvider({
   const openSession = useCallback(
     async (id: string) => {
       setState((s) => ({ ...s, activeId: id, error: null }));
-      if (state.connected && apiRef.current && !knownRef.current.messages[id] && !state.messages[id]) {
+      // Always re-fetch on open, even if this session was seen before this
+      // app run: the cached copy may predate messages sent from another
+      // device (PC, or this same phone in an earlier live-update failure)
+      // that no push event ever arrived to apply.
+      if (state.connected && apiRef.current) {
         await refreshMessages(id);
       }
     },
-    [state.messages, state.connected, refreshMessages],
+    [state.connected, refreshMessages],
   );
 
   const registerSession = useCallback((id: string) => {
@@ -1378,6 +1395,7 @@ export function StoreProvider({
     renameSession,
     deleteSession,
     refresh,
+    refreshMessages,
     closeMessage,
     attachments: state.attachments,
     addAttachments,

@@ -129,6 +129,20 @@ export function ChatScreen({
     return () => clearInterval(t);
   }, [store.refresh]);
 
+  // The open chat's own content otherwise depends entirely on the live
+  // event stream — which has been unreliable in practice (messages sent
+  // from this device or a PC session sometimes never arrive as push
+  // events). Poll the open session's messages independently so the chat
+  // eventually catches up even when no event ever lands.
+  useEffect(() => {
+    if (!store.connected || localMode || !store.activeId) return;
+    const id = store.activeId;
+    const t = setInterval(() => {
+      store.refreshMessages(id);
+    }, 2000);
+    return () => clearInterval(t);
+  }, [store.connected, localMode, store.activeId, store.refreshMessages]);
+
   useEffect(() => {
     if (store.permissions.length && store.permissions[0]?.sessionID === store.activeId) {
       setPendingPerm(store.permissions[0]);
@@ -162,7 +176,8 @@ export function ChatScreen({
       store.modelId,
     ],
   );
-  const projDir = active?.directory || pool.find((s) => s.directory)?.directory;
+  const scopedProject = store.projects.find((p) => p.id === store.activeServerProject);
+  const projDir = active?.directory || scopedProject?.worktree || pool.find((s) => s.directory)?.directory;
   const pickedCloud = CLOUD_IDS.find((id) => id === store.preferredCloud && store.cloudTokens[id]);
   const projName = localMode ? (pickedCloud ? cloudName(pickedCloud) : t("chat.device")) : baseName(projDir) || t("common.dash");
   const projAv = localMode ? t("chat.deviceLetter") : projName[0]?.toUpperCase() || t("chat.projectLetter");
@@ -389,29 +404,48 @@ export function ChatScreen({
       </BottomSheet>
 
       <BottomSheet theme={theme} open={sheet === "project"} title={t("chat.project")} onClose={() => setSheet(null)}>
-        <RowList
-          theme={theme}
-          rows={storageRows(
-            store.cloudTokens,
-            store.cloudRoots,
-            store.local.activeProject ? `project:${store.local.activeProject}` : store.preferredCloud,
-            store.local.projects,
-          )}
-          onPick={(r) => {
-            // Picking a project scopes the sessions to it and follows its folder
-            // to whichever storage holds it; picking a storage clears that.
-            if (r.id.startsWith("project:")) {
-              const id = r.id.slice("project:".length);
-              const project = store.local.projects.find((p) => p.id === id);
-              store.setActiveProject(id);
-              if (project) store.setPreferredCloud(project.cloud);
-            } else {
-              store.setActiveProject("");
-              store.setPreferredCloud(r.id);
-            }
-            setSheet(null);
-          }}
-        />
+        {localMode ? (
+          <RowList
+            theme={theme}
+            rows={storageRows(
+              store.cloudTokens,
+              store.cloudRoots,
+              store.local.activeProject ? `project:${store.local.activeProject}` : store.preferredCloud,
+              store.local.projects,
+            )}
+            onPick={(r) => {
+              // Picking a project scopes the sessions to it and follows its folder
+              // to whichever storage holds it; picking a storage clears that.
+              if (r.id.startsWith("project:")) {
+                const id = r.id.slice("project:".length);
+                const project = store.local.projects.find((p) => p.id === id);
+                store.setActiveProject(id);
+                if (project) store.setPreferredCloud(project.cloud);
+              } else {
+                store.setActiveProject("");
+                store.setPreferredCloud(r.id);
+              }
+              setSheet(null);
+            }}
+          />
+        ) : (
+          // Server mode: "project" means one of the computer's registered
+          // worktrees, not a device/cloud storage — those concepts don't
+          // apply once you're working through the server.
+          <RowList
+            theme={theme}
+            rows={store.projects.map((p) => ({
+              id: p.id,
+              name: baseName(p.worktree) || p.worktree || p.id,
+              selected: p.id === store.activeServerProject,
+              icon: "folder" as const,
+            }))}
+            onPick={(r) => {
+              store.setActiveServerProject(r.id === store.activeServerProject ? "" : r.id);
+              setSheet(null);
+            }}
+          />
+        )}
       </BottomSheet>
 
       <BottomSheet theme={theme} open={sheet === "sessions"} title={t("chat.pickSession")} onClose={() => setSheet(null)}>
