@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Animated, Easing, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import { SafeAreaProvider, useSafeAreaInsets } from "react-native-safe-area-context";
 import { Connection } from "./src/api";
@@ -573,8 +573,8 @@ function ScanStep({
         </Text>
 
         {(phase === "checking" || phase === "scanning") && (
-          <View style={{ alignItems: "center", gap: 10, paddingVertical: 18 }}>
-            <ActivityIndicator color={theme.faint} />
+          <View style={{ alignItems: "center", gap: 14, paddingVertical: 18 }}>
+            <GreenSpinner theme={theme} />
             <Text style={{ color: theme.muted, fontSize: 13 }}>
               {phase === "scanning" && progress.total
                 ? `${t("app.scan.scanning")} ${progress.done}/${progress.total}`
@@ -640,6 +640,32 @@ function ScanStep({
         </Pressable>
       </View>
     </View>
+  );
+}
+
+/** A continuously spinning ring in the theme's accent-green, standing in for the plain gray ActivityIndicator while scanning. */
+function GreenSpinner({ theme, size = 64 }: { theme: ReturnType<typeof makeTheme>; size?: number }) {
+  const spin = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.timing(spin, { toValue: 1, duration: 900, easing: Easing.linear, useNativeDriver: true }),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [spin]);
+  const rotate = spin.interpolate({ inputRange: [0, 1], outputRange: ["0deg", "360deg"] });
+  return (
+    <Animated.View
+      style={{
+        width: size,
+        height: size,
+        borderRadius: size / 2,
+        borderWidth: 5,
+        borderColor: theme.okBg,
+        borderTopColor: theme.ok,
+        transform: [{ rotate }],
+      }}
+    />
   );
 }
 
