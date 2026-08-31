@@ -135,7 +135,7 @@ export class Api {
   promptAsync(
     id: string,
     body: {
-      parts: Array<{ type: string; text?: string; url?: string; mediaType?: string }>;
+      parts: Array<{ type: string; text?: string; url?: string; mime?: string; filename?: string }>;
       model: { providerID: string; modelID: string };
       variant?: string;
     },

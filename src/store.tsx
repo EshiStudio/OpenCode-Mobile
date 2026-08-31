@@ -642,20 +642,23 @@ export function StoreProvider({
         setState((st) => ({ ...st, activeId: sid }));
       }
       if (!sid) return;
-      const parts: Array<{ type: string; text?: string; url?: string; mediaType?: string; filename?: string }> = [];
+      const parts: Array<{ type: string; text?: string; url?: string; mime?: string; filename?: string }> = [];
       for (const a of files) {
         if (a.kind === "link" && a.url) {
-          parts.push({ type: "source-url", url: a.url, text: undefined, mediaType: undefined });
+          parts.push({ type: "source-url", url: a.url, text: undefined, mime: undefined });
         } else if (a.kind === "image" && a.uri) {
           // The server takes a file part by url; a data: url keeps it self-contained.
-          parts.push({ type: "file", url: a.text || a.uri, mediaType: a.mime || "image/jpeg", filename: a.name });
+          // The field is `mime`, not `mediaType` -- the server rejects the whole
+          // prompt with a 400 otherwise, which is why photo/media sends silently
+          // never went anywhere.
+          parts.push({ type: "file", url: a.text || a.uri, mime: a.mime || "image/jpeg", filename: a.name });
         } else if (a.text) {
           parts.push({ type: "text", text: t("store.fileWithBody", { name: a.name, text: a.text || "" }) });
         } else if (a.path || a.uri) {
           parts.push({ type: "text", text: t("store.fileInContext", { path: a.path || a.uri || "" }) });
         }
       }
-      parts.push({ type: "text", text, mediaType: undefined });
+      parts.push({ type: "text", text, mime: undefined });
       const model = state.modelId && state.providerId ? { providerID: state.providerId, modelID: state.modelId } : undefined;
       // Echo the user's own message locally, right now: waiting on the
       // round trip (an SSE event that has proven unreliable, or the 2s
@@ -666,7 +669,7 @@ export function StoreProvider({
       const localParts: Part[] = parts.map((p, idx) => {
         const partID = `tmp_${sid}_${idx}`;
         if (p.type === "file" && p.url) {
-          return { id: partID, type: "file", mime: p.mediaType || "application/octet-stream", filename: p.filename, url: p.url };
+          return { id: partID, type: "file", mime: p.mime || "application/octet-stream", filename: p.filename, url: p.url };
         }
         return { id: partID, type: "text", text: p.text || p.url || "" };
       });
