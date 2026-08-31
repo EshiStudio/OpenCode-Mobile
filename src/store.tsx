@@ -657,23 +657,40 @@ export function StoreProvider({
       }
       parts.push({ type: "text", text, mediaType: undefined });
       const model = state.modelId && state.providerId ? { providerID: state.providerId, modelID: state.modelId } : undefined;
+      // Echo the user's own message locally, right now: waiting on the
+      // round trip (an SSE event that has proven unreliable, or the 2s
+      // fallback poll) made a sent message feel like it hadn't gone out
+      // at all. The next refreshMessages call replaces this array wholesale
+      // with the server's own copy, so the temporary entry is swapped for
+      // the real one automatically once that lands.
+      const localParts: Part[] = parts.map((p, idx) => {
+        const partID = `tmp_${sid}_${idx}`;
+        if (p.type === "file" && p.url) {
+          return { id: partID, type: "file", mime: p.mediaType || "application/octet-stream", filename: p.filename, url: p.url };
+        }
+        return { id: partID, type: "text", text: p.text || p.url || "" };
+      });
+      mergeMessage(sid, {
+        info: { id: `tmp_${sid}_${Date.now()}`, role: "user", sessionID: sid, time: { created: Date.now() } },
+        parts: localParts,
+      });
+      setState((s) => ({
+        ...s,
+        statuses: { ...s.statuses, [sid!]: { type: "busy" } as SessionStatus },
+        busy: true,
+        attachments: [],
+      }));
       try {
         await apiRef.current.promptAsync(sid, {
           parts,
           model: model ?? (await defaultModel(apiRef.current)),
           variant: state.variant,
         });
-        setState((s) => ({
-          ...s,
-          statuses: { ...s.statuses, [sid!]: { type: "busy" } as SessionStatus },
-          busy: true,
-          attachments: [],
-        }));
       } catch (e) {
         setState((s) => ({ ...s, error: e instanceof Error ? e.message : t("store.sendFailed") }));
       }
     },
-    [state.activeId, state.modelId, state.providerId, state.variant, createNew],
+    [state.activeId, state.modelId, state.providerId, state.variant, createNew, mergeMessage],
   );
 
   const abort = useCallback(() => {

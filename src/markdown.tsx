@@ -16,8 +16,12 @@ import { mono } from "./ui";
  * models here never emit; this walks the lines once instead.
  */
 
-/** Splits on inline code first, then on links, so both survive in one pass. */
-const CHUNKS = /(`[^`]*`|https?:\/\/[^\s<>()"']+)/;
+/**
+ * Splits on inline code, bold, italic, and links in one pass. Order matters:
+ * code spans first (their contents are never touched), then bold before
+ * italic so `**x**` doesn't get read as an italic-wrapped single asterisk.
+ */
+const CHUNKS = /(`[^`]*`|\*\*[^*]+\*\*|__[^_]+__|\*[^*\s][^*]*\*|_[^_\s][^_]*_|https?:\/\/[^\s<>()"']+)/;
 
 /** Offers what a link is good for: opening it, or putting the file on the phone. */
 export function linkActions(url: string) {
@@ -50,6 +54,20 @@ export function InlineText({ text, theme }: { text: string; theme: Theme }) {
           return (
             <Text key={i} style={{ color: theme.acc }} onPress={() => linkActions(p)}>
               {p}
+            </Text>
+          );
+        }
+        if ((p.startsWith("**") && p.endsWith("**") && p.length > 4) || (p.startsWith("__") && p.endsWith("__") && p.length > 4)) {
+          return (
+            <Text key={i} style={{ fontWeight: "700", color: theme.acc }}>
+              {p.slice(2, -2)}
+            </Text>
+          );
+        }
+        if ((p.startsWith("*") && p.endsWith("*") && p.length > 2) || (p.startsWith("_") && p.endsWith("_") && p.length > 2)) {
+          return (
+            <Text key={i} style={{ fontStyle: "italic" }}>
+              {p.slice(1, -1)}
             </Text>
           );
         }
