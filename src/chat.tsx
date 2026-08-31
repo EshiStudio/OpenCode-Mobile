@@ -186,8 +186,16 @@ export function ChatScreen({
     ? `${active.model?.providerID || "opencode"} · ${variantName(active.model?.variant || store.variant)}`
     : t("chat.pickProject");
 
+  // Settings mounts inside this same root view and has its own edge swipe
+  // (back navigation). With both active, a rightward edge swipe over
+  // Settings satisfied the drawer's own "open" condition too, and — since
+  // nested PanResponders don't cleanly hand priority to the descendant —
+  // the drawer silently won: it opened behind Settings' higher-zIndex
+  // overlay, invisibly, while Settings' own swipe never fired. Simplest
+  // fix is to stop offering this responder at all while Settings owns the
+  // gesture.
   return (
-    <View style={[styles.root, { backgroundColor: theme.bg }]} {...drawerSwipe.panHandlers}>
+    <View style={[styles.root, { backgroundColor: theme.bg }]} {...(settingsOpen ? {} : drawerSwipe.panHandlers)}>
       {localMode && store.error ? (
         <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginHorizontal: 12, marginBottom: 6, padding: 9, borderRadius: 8, backgroundColor: theme.errBg }}>
           <Icon name="warning" size={14} color={theme.err} />

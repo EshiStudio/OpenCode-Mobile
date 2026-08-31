@@ -1306,6 +1306,12 @@ export function StoreProvider({
     if (conn && lastConnRef.current !== conn) {
       lastConnRef.current = conn;
       connect(conn);
+    } else if (!conn && lastConnRef.current) {
+      // App.tsx cleared the saved connection (Settings → Disconnect) --
+      // without this, `connected` and every cached session/message stayed
+      // stale, so the button looked like it did nothing.
+      lastConnRef.current = null;
+      disconnect();
     }
     loadRegistered().then((ids) => {
       setState((s) => ({ ...s, registered: ids.length ? ids : s.registered }));
@@ -1354,7 +1360,7 @@ export function StoreProvider({
     return () => {
       subRef.current?.abort();
     };
-  }, [conn, connect]);
+  }, [conn, connect, disconnect]);
 
   settingsRef.current = state.settings;
 

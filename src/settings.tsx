@@ -20,6 +20,7 @@ import { BUILTIN_IDS, FEATURED_IDS, catalogModels, presetDesc, presetName } from
 import { ProviderPreset } from "./storage";
 import { CLOUD_IDS, CloudId, cloudHint, cloudName } from "./clouds";
 import { Lang, LANGS, t } from "./i18n";
+import { useSwipeBack } from "./swipe";
 
 /**
  * Settings is a small navigation stack: a full-screen list of grouped rows, and
@@ -83,6 +84,7 @@ export function SettingsScreen({
   }, [page, pageSlide]);
 
   const back = () => (page === "root" ? onClose() : setPage("root"));
+  const swipeBack = useSwipeBack(back);
 
   return (
     <View
@@ -90,6 +92,7 @@ export function SettingsScreen({
         StyleSheet.absoluteFill,
         { zIndex: 50, opacity: open ? 1 : 0, pointerEvents: open ? "auto" : "none" } as never,
       ]}
+      {...swipeBack.panHandlers}
     >
       <Animated.View style={[s.window, { backgroundColor: theme.bg, transform: [{ translateX: tx }] }]}>
         <View style={s.head}>
