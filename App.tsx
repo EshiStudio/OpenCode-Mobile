@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Animated, Easing, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { StatusBar } from "expo-status-bar";
+import * as Notifications from "expo-notifications";
 import { SafeAreaProvider, useSafeAreaInsets } from "react-native-safe-area-context";
 import { Connection } from "./src/api";
 import { StoreProvider, useStore } from "./src/store";
@@ -24,6 +25,21 @@ import {
   clearCrash,
   CrashReport,
 } from "./src/storage";
+
+/** Same machine as the picked opencode server, next port over -- see pair-proxy.mjs. */
+const PAIR_PROXY_PORT = 41113;
+
+// Foreground notifications don't show a banner by default; the pairing
+// code notification is meant to be seen (and its data read) the moment
+// it lands, not just silently delivered.
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowBanner: true,
+    shouldShowList: true,
+    shouldPlaySound: true,
+    shouldSetBadge: false,
+  }),
+});
 
 /**
  * In a release build an error thrown outside React render kills the process with
@@ -368,6 +384,9 @@ function ConnectScreen({
    */
   const [pickedFromList, setPickedFromList] = useState(false);
   const [code, setCode] = useState("");
+  /** "" while nothing has happened yet; sits alongside the manual code
+   * boxes so the same screen still works if the push never arrives. */
+  const [pairStatus, setPairStatus] = useState<"" | "sent" | "received" | "failed">("");
 
   useEffect(() => {
     loadSaved().then((s) => {
@@ -385,7 +404,7 @@ function ConnectScreen({
     });
   }, []);
 
-  const connect = async () => {
+  const connect = async (overrideCode?: string) => {
     if (!host.trim()) {
       setError(t("app.connect.enterHost"));
       return;
@@ -395,7 +414,7 @@ function ConnectScreen({
     const c: Connection = {
       host: host.trim().replace(/\/+$/, ""),
       username: username.trim() || "opencode",
-      password: pickedFromList ? code.trim() : password,
+      password: pickedFromList ? (overrideCode ?? code).trim() : password,
     };
     try {
       const { Api } = await import("./src/api");
@@ -409,6 +428,47 @@ function ConnectScreen({
       setBusy(false);
     }
   };
+
+  // Kicks off the actual pairing: ask for notification permission, get
+  // this device's Expo push token, and hand it to the PC-side proxy so it
+  // can generate a code and push it back here. Failure just means the
+  // push never shows up -- the same code boxes are still there to type
+  // into by hand, so this stays best-effort and silent.
+  const requestPairing = async (pcHost: string) => {
+    try {
+      const perm = await Notifications.requestPermissionsAsync();
+      if (perm.status !== "granted") {
+        setPairStatus("failed");
+        return;
+      }
+      const { data: pushToken } = await Notifications.getExpoPushTokenAsync();
+      const res = await fetch(`http://${pcHost}:${PAIR_PROXY_PORT}/pair`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pushToken }),
+      });
+      setPairStatus(res.ok ? "sent" : "failed");
+    } catch {
+      setPairStatus("failed");
+    }
+  };
+
+  // While the code screen is up for a picked device, listen for the push
+  // and fill + submit the code the moment it lands -- typing it by hand
+  // is the fallback, not the intended path.
+  useEffect(() => {
+    if (!pickedFromList || step !== "manual") return;
+    const sub = Notifications.addNotificationReceivedListener((n) => {
+      const incoming = n.request.content.data?.code;
+      if (typeof incoming === "string" && incoming.length === 6) {
+        setCode(incoming);
+        setPairStatus("received");
+        connect(incoming);
+      }
+    });
+    return () => sub.remove();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pickedFromList, step]);
 
   if (!ready) {
     return (
@@ -426,12 +486,17 @@ function ConnectScreen({
         setDark={setDark}
         onCancel={onCancel}
         onPick={(server) => {
-          setHost(`http://${server.host}:${server.port}`);
+          // The code only means anything to the pairing proxy, not to
+          // opencode serve itself -- point the connection at the proxy's
+          // port on that same machine instead of the server's own port.
+          setHost(`http://${server.host}:${PAIR_PROXY_PORT}`);
           setCameFromScan(true);
           setPickedFromList(true);
           setCode("");
           setError(null);
+          setPairStatus("");
           setStep("manual");
+          requestPairing(server.host);
         }}
         onManual={() => {
           setCameFromScan(true);
@@ -456,10 +521,18 @@ function ConnectScreen({
 
           {pickedFromList ? (
             <>
-              <DevicePill theme={theme} host={host.replace(/^https?:\/\//, "")} />
+              {/* Shown without the proxy's own port -- that's an internal
+                  detail, not something the person picked or needs to see. */}
+              <DevicePill theme={theme} host={host.replace(/^https?:\/\//, "").split(":")[0]} />
               <View style={{ gap: 6 }}>
                 <Text style={{ fontSize: 11.5, color: theme.faint }}>{t("app.connect.code")}</Text>
                 <CodeInput theme={theme} value={code} onChange={setCode} />
+                {pairStatus === "sent" ? (
+                  <Text style={{ fontSize: 12, color: theme.faint }}>{t("app.connect.codeSent")}</Text>
+                ) : null}
+                {pairStatus === "failed" ? (
+                  <Text style={{ fontSize: 12, color: theme.err }}>{t("app.connect.codePushFailed")}</Text>
+                ) : null}
               </View>
             </>
           ) : (
@@ -473,7 +546,7 @@ function ConnectScreen({
           {error ? <Text style={{ fontSize: 12.5, color: theme.err }}>{error}</Text> : null}
 
           <Pressable
-            onPress={connect}
+            onPress={() => connect()}
             disabled={busy}
             style={{
               height: 46,

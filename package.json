@@ -1,6 +1,6 @@
 {
   "name": "opencode-mobile",
-  "version": "1.7.1",
+  "version": "1.7.2",
   "main": "index.ts",
   "dependencies": {
     "@react-native-async-storage/async-storage": "2.2.0",
