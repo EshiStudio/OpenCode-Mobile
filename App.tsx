@@ -497,11 +497,13 @@ function ConnectScreen({
             <Text style={{ color: theme.muted, fontSize: 13.5 }}>{t("common.cancel")}</Text>
           </Pressable>
 
-          <Pressable onPress={() => setDark(!dark)} style={{ marginTop: 6, alignItems: "center" }}>
-            <Text style={{ color: theme.faint, fontSize: 13 }}>
-              {t("app.theme.toggle", { name: t(dark ? "app.theme.dark" : "app.theme.light") })}
-            </Text>
-          </Pressable>
+          {pickedFromList ? null : (
+            <Pressable onPress={() => setDark(!dark)} style={{ marginTop: 6, alignItems: "center" }}>
+              <Text style={{ color: theme.faint, fontSize: 13 }}>
+                {t("app.theme.toggle", { name: t(dark ? "app.theme.dark" : "app.theme.light") })}
+              </Text>
+            </Pressable>
+          )}
         </View>
       </View>
     </KeyboardAvoidingView>
@@ -562,6 +564,7 @@ function ScanStep({
   }, [attempt]);
 
   const rescan = () => setAttempt((n) => n + 1);
+  const scanning = phase === "checking" || phase === "scanning";
 
   return (
     <View style={[styles.connect, { backgroundColor: theme.bg }]}>
@@ -572,7 +575,7 @@ function ScanStep({
           opencode serve --hostname 0.0.0.0 --port 41111
         </Text>
 
-        {(phase === "checking" || phase === "scanning") && (
+        {scanning && (
           <View style={{ alignItems: "center", gap: 14, paddingVertical: 18 }}>
             <GreenSpinner theme={theme} />
             <Text style={{ color: theme.muted, fontSize: 13 }}>
@@ -580,6 +583,12 @@ function ScanStep({
                 ? `${t("app.scan.scanning")} ${progress.done}/${progress.total}`
                 : t("app.scan.scanning")}
             </Text>
+            <Pressable
+              onPress={onCancel}
+              style={{ paddingHorizontal: 18, paddingVertical: 10, borderRadius: 8, backgroundColor: theme.l2, borderWidth: 1, borderColor: theme.bd }}
+            >
+              <Text style={{ color: theme.ink, fontSize: 13.5 }}>{t("common.cancel")}</Text>
+            </Pressable>
           </View>
         )}
 
@@ -625,19 +634,23 @@ function ScanStep({
           </Pressable>
         )}
 
-        <Pressable onPress={onManual} style={{ alignItems: "center", paddingVertical: 8 }}>
-          <Text style={{ color: theme.faint, fontSize: 13 }}>{t("app.scan.manual")}</Text>
-        </Pressable>
+        {!scanning && (
+          <>
+            <Pressable onPress={onManual} style={{ alignItems: "center", paddingVertical: 8 }}>
+              <Text style={{ color: theme.faint, fontSize: 13 }}>{t("app.scan.manual")}</Text>
+            </Pressable>
 
-        <Pressable onPress={onCancel} style={{ alignItems: "center", paddingVertical: 4 }}>
-          <Text style={{ color: theme.muted, fontSize: 13.5 }}>{t("common.cancel")}</Text>
-        </Pressable>
+            <Pressable onPress={onCancel} style={{ alignItems: "center", paddingVertical: 4 }}>
+              <Text style={{ color: theme.muted, fontSize: 13.5 }}>{t("common.cancel")}</Text>
+            </Pressable>
 
-        <Pressable onPress={() => setDark(!dark)} style={{ marginTop: 2, alignItems: "center" }}>
-          <Text style={{ color: theme.faint, fontSize: 13 }}>
-            {t("app.theme.toggle", { name: t(dark ? "app.theme.dark" : "app.theme.light") })}
-          </Text>
-        </Pressable>
+            <Pressable onPress={() => setDark(!dark)} style={{ marginTop: 2, alignItems: "center" }}>
+              <Text style={{ color: theme.faint, fontSize: 13 }}>
+                {t("app.theme.toggle", { name: t(dark ? "app.theme.dark" : "app.theme.light") })}
+              </Text>
+            </Pressable>
+          </>
+        )}
       </View>
     </View>
   );
