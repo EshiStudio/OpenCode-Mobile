@@ -202,6 +202,10 @@ export type StoreState = {
   revertTo: (messageID: string) => Promise<void>;
   /** Creates the project's folder, then the project. Rejects if the folder cannot be made. */
   createProject: (name: string, cloud: string) => Promise<string>;
+  /** Folder names already on a cloud's opencode-projects/ that aren't registered as a project on this device yet. */
+  listUnregisteredCloudProjects: (cloud: string) => Promise<string[]>;
+  /** Registers one of those discovered folders as a project without creating anything. */
+  importCloudProject: (name: string, cloud: string) => Promise<string>;
   /** Forgets a project. The folder and its files are left alone. */
   removeProject: (id: string) => void;
   /** Scopes the sessions list to a project; "" shows all of them. */
@@ -914,6 +918,55 @@ export function StoreProvider({
       path = dir.uri;
     }
 
+    const id = "prj_" + Date.now();
+    setState((st) => {
+      const next: LocalState = {
+        ...st.local,
+        projects: [{ id, name: safe, cloud, path, when: Date.now() }, ...st.local.projects],
+        activeProject: id,
+      };
+      saveLocal(next);
+      return { ...st, local: next };
+    });
+    return id;
+  }, []);
+
+  /**
+   * Folders already sitting under a cloud's opencode-projects/ that this
+   * device hasn't registered as a project yet — the gap that made an
+   * existing "Заметки" folder invisible to @ and the file viewer even
+   * though it was right there on the Disk. Device-only projects have
+   * nothing to discover this way: they either exist in local.projects or
+   * they don't, there's no separate source of truth to scan.
+   */
+  const listUnregisteredCloudProjects = useCallback(async (cloud: string): Promise<string[]> => {
+    const s = stateRef.current;
+    const { token, root } = cloudCredential(s, cloud as CloudId);
+    if (!token) return [];
+    let entries: string[];
+    try {
+      entries = await cloudListFolder(cloud as CloudId, token, PROJECT_DIR, root);
+    } catch {
+      return [];
+    }
+    const known = new Set(
+      s.local.projects.filter((p) => p.cloud === cloud).map((p) => p.name.toLowerCase()),
+    );
+    return entries
+      .filter((e) => e.endsWith("/"))
+      .map((e) => e.slice(0, -1))
+      .filter((name) => name && !known.has(name.toLowerCase()));
+  }, []);
+
+  /** Registers an existing cloud folder as a project — same bookkeeping as createProject, minus creating the folder. */
+  const importCloudProject = useCallback(async (name: string, cloud: string) => {
+    const safe = folderName(name);
+    if (!safe) throw new Error(t("project.needName"));
+    const { local } = stateRef.current;
+    if (local.projects.some((p) => p.name.toLowerCase() === safe.toLowerCase() && p.cloud === cloud)) {
+      throw new Error(t("project.exists"));
+    }
+    const path = `${PROJECT_DIR}/${safe}`;
     const id = "prj_" + Date.now();
     setState((st) => {
       const next: LocalState = {
@@ -1749,6 +1802,8 @@ export function StoreProvider({
     saveYandex,
     revertTo,
     createProject,
+    listUnregisteredCloudProjects,
+    importCloudProject,
     removeProject,
     setActiveProject,
     activeServerProject: state.activeServerProject,

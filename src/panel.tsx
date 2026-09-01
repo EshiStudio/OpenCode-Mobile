@@ -5,7 +5,7 @@ import { Icon } from "./icons";
 import { Theme } from "./theme";
 import { useStore } from "./store";
 import { Project, SessionInfo } from "./types";
-import { CLOUD_IDS, cloudName } from "./clouds";
+import { CloudId, CLOUD_IDS, cloudName } from "./clouds";
 import { useDrawerSwipe } from "./swipe";
 
 function baseName(dir?: string): string {
@@ -86,6 +86,7 @@ function ProjectStrip({
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [discovered, setDiscovered] = useState<string[]>([]);
 
   const active = store.local.activeProject;
   const projects = store.local.projects;
@@ -95,6 +96,37 @@ function ProjectStrip({
     setErr("");
     try {
       await store.createProject(name, cloud);
+      setName("");
+      setCreating(false);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // A cloud may already hold project folders this device never made — an
+  // earlier install, another phone, a folder added by hand. Offer those
+  // instead of only "create a new one".
+  useEffect(() => {
+    if (!creating || !cloud) {
+      setDiscovered([]);
+      return;
+    }
+    let cancelled = false;
+    store.listUnregisteredCloudProjects(cloud).then((names) => {
+      if (!cancelled) setDiscovered(names);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [creating, cloud, store.listUnregisteredCloudProjects]);
+
+  const importExisting = async (folder: string) => {
+    setBusy(true);
+    setErr("");
+    try {
+      await store.importCloudProject(folder, cloud);
       setName("");
       setCreating(false);
     } catch (e) {
@@ -143,6 +175,26 @@ function ProjectStrip({
               />
             ))}
           </ScrollView>
+          {discovered.length > 0 ? (
+            <View style={{ gap: 2 }}>
+              <Text style={{ fontSize: 10.5, color: theme.faint, marginTop: 2 }}>
+                {t("project.foundOnCloud", { cloud: cloudName(cloud as CloudId) })}
+              </Text>
+              {discovered.map((folder) => (
+                <Pressable
+                  key={folder}
+                  onPress={() => importExisting(folder)}
+                  disabled={busy}
+                  style={({ pressed }) => [s.projRow, { backgroundColor: pressed ? theme.l2 : "transparent" }]}
+                >
+                  <Icon name="cloud" size={13} color={theme.faint} />
+                  <Text style={{ flex: 1, fontSize: 13, color: theme.ink }} numberOfLines={1}>
+                    {folder}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+          ) : null}
           {err ? <Text style={{ fontSize: 11.5, color: theme.err }}>{err}</Text> : null}
           <Pressable
             onPress={create}

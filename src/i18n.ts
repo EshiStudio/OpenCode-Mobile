@@ -206,6 +206,7 @@ const EN: Record<string, string> = {
   "project.needName": "Give the project a name",
   "project.exists": "A project with that name already exists",
   "project.noCloud": "That storage is not connected",
+  "project.foundOnCloud": "Found on {cloud}, not yet added here — tap to add:",
 
   /* ------------------------------------------------------------ settings -- */
   "settings.root": "Settings",
@@ -711,6 +712,7 @@ const RU: Record<string, string> = {
   "project.needName": "Укажите название проекта",
   "project.exists": "Проект с таким названием уже есть",
   "project.noCloud": "Это хранилище не подключено",
+  "project.foundOnCloud": "Найдено на {cloud}, ещё не добавлено здесь — нажмите, чтобы добавить:",
   "message.thinking": "Размышление · {text}",
   "message.retry": "Повтор попытки {attempt}",
   "message.saved": "Файл сохранён",
