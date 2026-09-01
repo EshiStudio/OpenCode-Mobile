@@ -285,7 +285,13 @@ async function collectCloudFiles(
   let items: string[];
   try {
     items = await cloudListFolder(cloudId, token, rel, root);
-  } catch {
+  } catch (e) {
+    // A subfolder failing mid-walk shouldn't kill results already found
+    // elsewhere in the tree, but the very first call failing means the
+    // search found nothing at all — that's worth telling findFiles about
+    // instead of silently returning an empty list indistinguishable from
+    // "no matches".
+    if (depth === 0) throw e;
     return;
   }
   for (const raw of items) {
@@ -1520,7 +1526,16 @@ export function StoreProvider({
     const { token, root } = cloudCredential(s, cloudId);
     if (!token) return [];
     const all: string[] = [];
-    await collectCloudFiles(cloudId, token, root, active.path, "", all, 200, 0);
+    try {
+      await collectCloudFiles(cloudId, token, root, active.path, "", all, 200, 0);
+    } catch (e) {
+      // Otherwise this fails silently forever — measured live: an @ picker
+      // that never shows anything looks identical to "no files match",
+      // there was no way to tell a dead token or a network hiccup from a
+      // genuinely empty project.
+      setState((st) => ({ ...st, error: e instanceof Error ? e.message : t("store.cloudSearchFailed") }));
+      return [];
+    }
     return all.filter((p) => p.toLowerCase().includes(needle)).slice(0, 30);
   }, []);
 
