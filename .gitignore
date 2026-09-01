@@ -45,6 +45,7 @@ yarn-error.*
 # native Android project: the sources are tracked, the build output is not
 /android/build/
 /android/app/build/
+/modules/*/android/build/
 /android/.gradle/
 /android/.cxx/
 /android/app/.cxx/

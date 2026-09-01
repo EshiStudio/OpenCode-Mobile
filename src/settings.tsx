@@ -409,6 +409,13 @@ function BasicSection({ theme }: { theme: Theme }) {
       </Row>
       <Row theme={theme}>
         <View style={s.rowText}>
+          <Text style={{ fontSize: 13.5, color: theme.ink, fontWeight: "600" }}>{t("settings.keepAwake")}</Text>
+          <Text style={{ fontSize: 12, color: theme.muted, marginTop: 2 }}>{t("settings.keepAwakeDesc")}</Text>
+        </View>
+        <Toggle theme={theme} value={store.settings.keepAwake} onChange={(v) => store.updateSettings({ keepAwake: v })} />
+      </Row>
+      <Row theme={theme}>
+        <View style={s.rowText}>
           <Text style={{ fontSize: 13.5, color: theme.ink, fontWeight: "600" }}>{t("settings.showReasoning")}</Text>
           <Text style={{ fontSize: 12, color: theme.muted, marginTop: 2 }}>{t("settings.showReasoningDesc")}</Text>
         </View>

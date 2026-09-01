@@ -8,6 +8,8 @@ import React, {
   useState,
 } from "react";
 import { AppState } from "react-native";
+import * as Notifications from "expo-notifications";
+import { startKeepAlive, stopKeepAlive } from "../modules/keep-alive";
 import { Api, ApiError, Connection } from "./api";
 import {
   AppSettings,
@@ -380,10 +382,58 @@ export function StoreProvider({
   const saveCacheTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const knownRef = useRef({ messages: {} as Record<string, Record<string, StoredMessage>>, order: {} as Record<string, string[]> });
 
-  // Background execution has no real hook here — the agent already runs on
-  // the connected server, not this process. What backgrounding the app can
-  // still do is arrange for a later background fetch to notice the reply
-  // landed and fire a notification (see background.ts); coming back to the
+  // A run has to survive the screen going off, and on Android only a
+  // foreground service does. It covers both kinds of run, for different
+  // reasons: a local run *is* this process, so freezing it stops the agent
+  // outright, while a server run merely loses its event stream — but a lost
+  // stream means the finished answer sits unnoticed until the OS grants a
+  // background fetch, which under Doze can take the better part of an hour.
+  //
+  // The service is raised while a reply is in flight and dropped the moment
+  // one isn't, so the notification is only ever visible during actual work.
+  // Starting it is only permitted from the foreground, which is where sending
+  // always happens; if Android refuses anyway, the background-fetch watch
+  // below is still there as the slow path.
+  const keepAliveRef = useRef(false);
+  useEffect(() => {
+    const s = stateRef.current;
+    if (state.busy && s.settings.keepAwake) {
+      const title = activeSessionTitle(s);
+      startKeepAlive(t("keepAlive.title"), title ? t("keepAlive.bodyIn", { title }) : t("keepAlive.body"));
+      keepAliveRef.current = true;
+      return;
+    }
+    if (!keepAliveRef.current) return;
+    keepAliveRef.current = false;
+    stopKeepAlive();
+    // The ongoing notification vanishes with the service, so a run that ended
+    // out of sight would end silently. Only worth saying when the user isn't
+    // already looking at the answer.
+    if (AppState.currentState !== "active" && s.settings.keepAwake) {
+      const title = activeSessionTitle(s);
+      Notifications.scheduleNotificationAsync({
+        content: {
+          title: t("keepAlive.done"),
+          body: title ? t("keepAlive.doneBodyIn", { title }) : t("keepAlive.doneBody"),
+        },
+        trigger: null,
+      }).catch(() => {});
+    }
+  }, [state.busy, state.settings.keepAwake]);
+
+  // Turning the setting off mid-run should take the notification down with it,
+  // and the app closing should never leave one stranded.
+  useEffect(() => {
+    if (!state.settings.keepAwake && keepAliveRef.current) {
+      keepAliveRef.current = false;
+      stopKeepAlive();
+    }
+  }, [state.settings.keepAwake]);
+  useEffect(() => () => stopKeepAlive(), []);
+
+  // The service is the fast path; this is the fallback for when Android kills
+  // it anyway. Backgrounding mid-reply leaves a note for a later background
+  // fetch to notice the reply landed (see background.ts); coming back to the
   // foreground drops that watch since the normal 2s poll picks up again.
   useEffect(() => {
     const sub = AppState.addEventListener("change", (next) => {
@@ -1899,6 +1949,19 @@ export function attachLine(files: Attachment[]): string {
 
 export function sessionTitle(s: SessionInfo): string {
   return s.title && s.title.trim() ? s.title : t("chat.newSession");
+}
+
+/**
+ * Names the conversation currently on screen, whichever kind it is, for the
+ * background notification. Empty when there is nothing to name — the caller
+ * then says "the agent" instead of quoting a blank title.
+ */
+function activeSessionTitle(s: { activeId: string | null; sessions: SessionInfo[]; local: LocalState }): string {
+  if (!s.activeId) return "";
+  const server = s.sessions.find((x) => x.id === s.activeId);
+  if (server) return sessionTitle(server);
+  const local = s.local.sessions.find((x) => x.id === s.activeId);
+  return local && local.title.trim() ? local.title : "";
 }
 
 export function variantName(v: string): string {

@@ -196,6 +196,7 @@ export type AppSettings = {
   expandShell: boolean;
   expandEdit: boolean;
   localWork: boolean;
+  keepAwake: boolean;
 };
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -204,6 +205,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   expandShell: false,
   expandEdit: false,
   localWork: false,
+  keepAwake: true,
 };
 
 export async function loadSettings(): Promise<AppSettings> {
