@@ -710,10 +710,6 @@ export function ChatScreen({
   }
 
   function openFilePath(path: string) {
-    if (localMode || !store.connected) {
-      Alert.alert(t("chat.filePreview"), t("chat.filePreviewOffline"));
-      return;
-    }
     setFileViewer({ path, content: "", loading: true });
     store.readFile(path, projDir).then((res) => {
       if (!res) {

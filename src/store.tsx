@@ -55,7 +55,7 @@ import { appTools, AppControl } from "./app-tools";
 import { t } from "./i18n";
 import { extractToken } from "./yandex";
 import { CloudId, CLOUD_IDS, cloudName, connect as cloudConnect, makeFolder as cloudMakeFolder } from "./clouds";
-import { Directory, Paths } from "expo-file-system";
+import { Directory, File, Paths } from "expo-file-system";
 import { keepForHistory } from "./media";
 import { OAuthCloud, refresh as oauthRefresh, signIn, stale } from "./oauth";
 import { APP_VERSION_LABEL, checkForUpdate, Release } from "./update";
@@ -615,11 +615,18 @@ export function StoreProvider({
           }
         })();
       } catch (e) {
+        // A saved address that has never actually connected (or hasn't in a
+        // very long time) retries silently forever in the background — most
+        // installs have no server at all, and surfacing "can't reach the
+        // server" on every 5s retry for an address nobody is using right now
+        // was just noise. Only a session that was actually live is worth
+        // interrupting the view for when it drops.
+        const hadRealSession = stateRef.current.sessions.length > 0;
         setState((s) => ({
           ...s,
           connected: false,
           connecting: false,
-          error: e instanceof ApiError ? e.message : t("store.connectFailed"),
+          error: hadRealSession ? (e instanceof ApiError ? e.message : t("store.connectFailed")) : null,
         }));
         onConnectionFailure?.(e);
         // A wrong password needs the user; a dropped Wi-Fi bar or a server
@@ -630,7 +637,7 @@ export function StoreProvider({
           if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
           retryTimerRef.current = setTimeout(() => {
             if (lastConnRef.current === c) connect(c);
-          }, 5000);
+          }, hadRealSession ? 5000 : 20000);
         }
       }
     },
@@ -1392,10 +1399,24 @@ export function StoreProvider({
     }
   }, []);
 
+  /** Reads a file for the tap-to-view path in a reply: the server if connected, else the active on-device project. */
   const readFile = useCallback(async (path: string, directory?: string) => {
-    if (!apiRef.current) return null;
+    if (stateRef.current.connected && apiRef.current) {
+      try {
+        return await apiRef.current.readFileContent(path, directory);
+      } catch {
+        return null;
+      }
+    }
+    const active = stateRef.current.local.projects.find((p) => p.id === stateRef.current.local.activeProject);
+    if (!active || active.cloud) return null;
     try {
-      return await apiRef.current.readFileContent(path, directory);
+      const segments = path.replace(/\\/g, "/").split("/").filter((s) => s && s !== ".");
+      if (segments.some((s) => s === "..")) return null;
+      const file = new File(active.path, ...segments);
+      if (!file.exists) return null;
+      const text = await file.text();
+      return { type: "text" as const, content: text };
     } catch {
       return null;
     }
