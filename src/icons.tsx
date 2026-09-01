@@ -140,6 +140,83 @@ export function Icon({
   );
 }
 
+/**
+ * File-type icon + color for a path, the same idea as VS Code / opencode's
+ * own file badges — image files read as images, code files read as code,
+ * at a glance, instead of every row wearing the same generic file icon.
+ * {@link https://code.visualstudio.com/api/references/icons-in-labels}
+ */
+const FILE_BADGES: Record<string, { icon: IconName; color: string }> = {
+  html: { icon: "link", color: "#e8722a" },
+  htm: { icon: "link", color: "#e8722a" },
+  md: { icon: "open-file", color: "#4a7ddb" },
+  mdx: { icon: "open-file", color: "#4a7ddb" },
+  ts: { icon: "code-lines", color: "#3178c6" },
+  tsx: { icon: "code-lines", color: "#3178c6" },
+  js: { icon: "code-lines", color: "#c9b13b" },
+  jsx: { icon: "code-lines", color: "#c9b13b" },
+  mjs: { icon: "code-lines", color: "#c9b13b" },
+  cjs: { icon: "code-lines", color: "#c9b13b" },
+  json: { icon: "code-lines", color: "#8f9aa5" },
+  json5: { icon: "code-lines", color: "#8f9aa5" },
+  jsonc: { icon: "code-lines", color: "#8f9aa5" },
+  yml: { icon: "code-lines", color: "#8f9aa5" },
+  yaml: { icon: "code-lines", color: "#8f9aa5" },
+  toml: { icon: "code-lines", color: "#8f9aa5" },
+  ini: { icon: "code-lines", color: "#8f9aa5" },
+  css: { icon: "code-lines", color: "#563d7c" },
+  scss: { icon: "code-lines", color: "#c66394" },
+  less: { icon: "code-lines", color: "#1d365d" },
+  py: { icon: "code-lines", color: "#3572a5" },
+  rb: { icon: "code-lines", color: "#c24141" },
+  go: { icon: "code-lines", color: "#4ec9e0" },
+  rs: { icon: "code-lines", color: "#c24141" },
+  java: { icon: "code-lines", color: "#c24141" },
+  kt: { icon: "code-lines", color: "#7f52ff" },
+  swift: { icon: "code-lines", color: "#e8722a" },
+  c: { icon: "code-lines", color: "#5a94c9" },
+  h: { icon: "code-lines", color: "#5a94c9" },
+  cpp: { icon: "code-lines", color: "#5a94c9" },
+  hpp: { icon: "code-lines", color: "#5a94c9" },
+  sql: { icon: "code-lines", color: "#4a7ddb" },
+  xml: { icon: "code-lines", color: "#e8722a" },
+  svg: { icon: "photo", color: "#c9954a" },
+  png: { icon: "photo", color: "#2f9e57" },
+  jpg: { icon: "photo", color: "#2f9e57" },
+  jpeg: { icon: "photo", color: "#2f9e57" },
+  gif: { icon: "photo", color: "#2f9e57" },
+  webp: { icon: "photo", color: "#2f9e57" },
+  bmp: { icon: "photo", color: "#2f9e57" },
+  ico: { icon: "photo", color: "#2f9e57" },
+  aseprite: { icon: "photo", color: "#7f52ff" },
+  ase: { icon: "photo", color: "#7f52ff" },
+  op: { icon: "new-session", color: "#3b6ff0" },
+  pdf: { icon: "open-file", color: "#c24141" },
+  txt: { icon: "terminal", color: "#8f9aa5" },
+  log: { icon: "terminal", color: "#8f9aa5" },
+  csv: { icon: "terminal", color: "#2f9e57" },
+  env: { icon: "terminal", color: "#c9954a" },
+  lock: { icon: "terminal", color: "#8f9aa5" },
+  gitignore: { icon: "terminal", color: "#8f9aa5" },
+  sh: { icon: "terminal", color: "#2f9e57" },
+  bash: { icon: "terminal", color: "#2f9e57" },
+  zsh: { icon: "terminal", color: "#2f9e57" },
+  ps1: { icon: "terminal", color: "#2f9e57" },
+  zip: { icon: "terminal", color: "#c9954a" },
+  tar: { icon: "terminal", color: "#c9954a" },
+  gz: { icon: "terminal", color: "#c9954a" },
+};
+
+export function fileBadge(path: string): { icon: IconName; color: string } {
+  const name = path.split("/").pop() || path;
+  const dot = name.lastIndexOf(".");
+  const ext = dot >= 0 ? name.slice(dot + 1).toLowerCase() : "";
+  const hit = FILE_BADGES[ext];
+  if (hit) return hit;
+  if (!ext) return { icon: "folder", color: "#c9954a" };
+  return { icon: "open-file", color: "#8f9aa5" };
+}
+
 const BRANDS: Record<string, { viewBox: string; d: string }> = {
   dropbox: {
     viewBox: "0 0 24 24",

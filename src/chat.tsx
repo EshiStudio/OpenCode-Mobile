@@ -14,7 +14,7 @@ import {
   View,
 } from "react-native";
 import * as Clipboard from "expo-clipboard";
-import { Icon } from "./icons";
+import { fileBadge, Icon } from "./icons";
 import { Attachment, useStore } from "./store";
 import { imageDataUrl, isTextual, keepLocally, pickMedia, textPreview } from "./media";
 import { Theme } from "./theme";
@@ -982,12 +982,16 @@ function FilePicker({
             if (v.trim().length > 1) {
               store.findFiles?.(v.trim()).then((res) => {
                 setRows(
-                  (res || []).map((r, i) => ({
-                    id: String(i),
-                    name: r.split(/[\\/]/).pop() || r,
-                    desc: r,
-                    icon: "folder",
-                  })),
+                  (res || []).map((r, i) => {
+                    const badge = fileBadge(r);
+                    return {
+                      id: String(i),
+                      name: r.split(/[\\/]/).pop() || r,
+                      desc: r,
+                      icon: badge.icon,
+                      iconColor: badge.color,
+                    };
+                  }),
                 );
               });
             } else {

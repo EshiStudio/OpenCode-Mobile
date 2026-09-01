@@ -10,7 +10,7 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { BrandIcon, Icon, IconName } from "./icons";
+import { BrandIcon, fileBadge, Icon, IconName } from "./icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useKeyboardOffset, useKeyboardVisible } from "./keyboard";
 import { Attachment } from "./store";
@@ -37,42 +37,6 @@ export const SLASH_COMMANDS: { id: SlashCommandId; icon: IconName }[] = [
   { id: "clear", icon: "close" },
   { id: "help", icon: "info" },
 ];
-
-/** {@link https://code.visualstudio.com/api/references/icons-in-labels} для близких к десктопу иконок. */
-function fileBadge(path: string): { icon: IconName; color: string; letter: string } {
-  const ext = (path.split(".").pop() || "").toLowerCase();
-  const name = path.split("/").pop() || path;
-  const m: Record<string, { icon: IconName; color: string }> = {
-    html: { icon: "link", color: "#e8722a" },
-    htm: { icon: "link", color: "#e8722a" },
-    md: { icon: "open-file", color: "#4a7ddb" },
-    mdx: { icon: "open-file", color: "#4a7ddb" },
-    ts: { icon: "code-lines", color: "#3178c6" },
-    tsx: { icon: "code-lines", color: "#3178c6" },
-    js: { icon: "code-lines", color: "#c9b13b" },
-    jsx: { icon: "code-lines", color: "#c9b13b" },
-    json: { icon: "code-lines", color: "#8f9aa5" },
-    css: { icon: "code-lines", color: "#563d7c" },
-    png: { icon: "photo", color: "#2f9e57" },
-    jpg: { icon: "photo", color: "#2f9e57" },
-    jpeg: { icon: "photo", color: "#2f9e57" },
-    gif: { icon: "photo", color: "#2f9e57" },
-    webp: { icon: "photo", color: "#2f9e57" },
-    op: { icon: "new-session", color: "#3b6ff0" },
-    pdf: { icon: "open-file", color: "#c24141" },
-    txt: { icon: "terminal", color: "#8f9aa5" },
-    log: { icon: "terminal", color: "#8f9aa5" },
-    sh: { icon: "terminal", color: "#2f9e57" },
-    ps1: { icon: "terminal", color: "#2f9e57" },
-  };
-  const hit = m[ext];
-  if (hit) return { ...hit, letter: "" };
-  if (!ext || ext === name) {
-    // no extension at all — likely a directory, mark it as such
-    return { icon: "folder", color: "#c9954a", letter: "" };
-  }
-  return { icon: "open-file", color: "#8f9aa5", letter: "" };
-}
 
 /** Finds an active `@file` or `/command` trigger ending right at the cursor. */
 function detectTrigger(

@@ -17,6 +17,8 @@ export type SheetRow = {
   id: string;
   name: string;
   icon?: string;
+  /** Overrides the icon's default theme.muted tint — file-type badges (see icons.tsx's fileBadge). */
+  iconColor?: string;
   badge?: string;
   desc?: string;
   groupOf?: string;
@@ -115,7 +117,7 @@ const Row = React.memo(function Row({
     (row.brand ? (
       <BrandIcon providerID={row.brand.id} size={20} colored={row.brand.colored} color="#9a9a9a" />
     ) : row.icon ? (
-      <Icon name={(row.icon as never) ?? "plus"} size={20} color={theme.muted} />
+      <Icon name={(row.icon as never) ?? "plus"} size={20} color={row.iconColor || theme.muted} />
     ) : (
       <View style={{ width: 20 }} />
     ));
