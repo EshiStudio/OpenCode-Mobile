@@ -184,6 +184,14 @@ export class Api {
     return this.request<string[]>(`/find/file?${q.toString()}`);
   }
 
+  readFileContent(path: string, directory?: string) {
+    const q = new URLSearchParams({ path });
+    if (directory) q.set("directory", directory);
+    return this.request<{ type: "text" | "binary"; content: string; encoding?: "base64"; mimeType?: string }>(
+      `/file/content?${q.toString()}`,
+    );
+  }
+
   listProviders() {
     return this.request<{ providers: ProviderWithModels[]; default: Record<string, string> }>("/config/providers");
   }

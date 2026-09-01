@@ -38,15 +38,36 @@ export function linkActions(url: string) {
   ]);
 }
 
-export function InlineText({ text, theme }: { text: string; theme: Theme }) {
+/**
+ * Whether an inline-code span reads as a file path worth making tappable:
+ * a bare `name.ext` or a path with slashes, no spaces, no scheme.
+ */
+export function looksLikeFilePath(s: string): boolean {
+  if (!s || s.length > 200 || /\s/.test(s) || /^[a-z]+:\/\//i.test(s)) return false;
+  return /[\\/]/.test(s) || /^[\w.\-]+\.[A-Za-z0-9]{1,8}$/.test(s);
+}
+
+export function InlineText({ text, theme, onFilePress }: { text: string; theme: Theme; onFilePress?: (path: string) => void }) {
   const parts = text.split(CHUNKS);
   return (
     <Text style={{ fontSize: 14, lineHeight: 21, color: theme.ink }}>
       {parts.map((p, i) => {
         if (p.startsWith("`") && p.endsWith("`") && p.length > 2) {
+          const code = p.slice(1, -1);
+          if (onFilePress && looksLikeFilePath(code)) {
+            return (
+              <Text
+                key={i}
+                style={[mono, { fontSize: 12.5, color: theme.acc, textDecorationLine: "underline" }]}
+                onPress={() => onFilePress(code)}
+              >
+                {code}
+              </Text>
+            );
+          }
           return (
             <Text key={i} style={[mono, { fontSize: 12.5, color: theme.muted }]}>
-              {p.slice(1, -1)}
+              {code}
             </Text>
           );
         }
@@ -202,7 +223,7 @@ function CodeBlock({ theme, lang, text }: { theme: Theme; lang: string; text: st
   );
 }
 
-export function Markdown({ text, theme }: { text: string; theme: Theme }) {
+export function Markdown({ text, theme, onFilePress }: { text: string; theme: Theme; onFilePress?: (path: string) => void }) {
   const blocks = React.useMemo(() => parseBlocks(text), [text]);
 
   return (
@@ -230,7 +251,7 @@ export function Markdown({ text, theme }: { text: string; theme: Theme }) {
           case "quote":
             return (
               <View key={i} style={[s.quote, { borderLeftColor: theme.bd }]}>
-                <InlineText text={b.text} theme={theme} />
+                <InlineText text={b.text} theme={theme} onFilePress={onFilePress} />
               </View>
             );
           case "list":
@@ -242,14 +263,14 @@ export function Markdown({ text, theme }: { text: string; theme: Theme }) {
                       {b.ordered ? `${j + 1}.` : "•"}
                     </Text>
                     <View style={{ flex: 1 }}>
-                      <InlineText text={item} theme={theme} />
+                      <InlineText text={item} theme={theme} onFilePress={onFilePress} />
                     </View>
                   </View>
                 ))}
               </View>
             );
           default:
-            return <InlineText key={i} text={b.text} theme={theme} />;
+            return <InlineText key={i} text={b.text} theme={theme} onFilePress={onFilePress} />;
         }
       })}
     </View>

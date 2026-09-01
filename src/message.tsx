@@ -192,6 +192,7 @@ export function MessageView({
   expandEdit = false,
   onRestore,
   onRevert,
+  onFilePress,
 }: {
   theme: Theme;
   msg: StoredMessage;
@@ -204,6 +205,8 @@ export function MessageView({
   onRestore?: (text: string) => void;
   /** Rolls the workspace back to before this message. */
   onRevert?: (messageID: string) => void;
+  /** Opens a tapped file path (in a code span) in the in-app viewer. */
+  onFilePress?: (path: string) => void;
 }) {
   // There is no hover on a phone, so the actions opencode shows on hover live
   // behind a long press instead.
@@ -269,7 +272,7 @@ export function MessageView({
       ))}
       {texts.map((body, i) => (
         <View key={i} style={{ marginVertical: 8 }}>
-          <Markdown text={body} theme={theme} />
+          <Markdown text={body} theme={theme} onFilePress={onFilePress} />
         </View>
       ))}
       {errored && (

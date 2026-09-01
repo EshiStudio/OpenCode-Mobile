@@ -7,6 +7,7 @@ import React, {
   useRef,
   useState,
 } from "react";
+import { AppState } from "react-native";
 import { Api, ApiError, Connection } from "./api";
 import {
   AppSettings,
@@ -44,6 +45,10 @@ import {
   saveRegistered,
   saveSettings,
   saveYandexToken,
+  saveWatchTask,
+  clearWatchTask,
+  loadServerCache,
+  saveServerCache,
 } from "./storage";
 import { diskTools, downloadTools, fileTools, webTools, runTool, toolLabel } from "./tools";
 import { appTools, AppControl } from "./app-tools";
@@ -119,6 +124,8 @@ export type StoreState = {
   removeAttachment: (index: number) => void;
   clearAttachments: () => void;
   findFiles: (q: string) => Promise<string[]>;
+  /** Reads a file from the connected server's project directory, for tapping a file path in a message. */
+  readFile: (path: string, directory?: string) => Promise<{ type: "text" | "binary"; content: string; mimeType?: string } | null>;
   registered: string[];
   onlyWeb: boolean;
   setOnlyWeb: (b: boolean) => void;
@@ -126,6 +133,8 @@ export type StoreState = {
   settings: AppSettings;
   updateSettings: (patch: Partial<AppSettings>) => void;
   isLocal: boolean;
+  /** A server connection is configured, whether or not it's reachable right now. */
+  hasServer: boolean;
   local: LocalState;
   /** User-added providers only, as persisted. */
   presets: ProviderPreset[];
@@ -266,7 +275,36 @@ export function StoreProvider({
   const stateRef = useRef(state);
   stateRef.current = state;
   const subRef = useRef<AbortController | null>(null);
+  const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const hydratedCacheRef = useRef(false);
+  const saveCacheTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const knownRef = useRef({ messages: {} as Record<string, Record<string, StoredMessage>>, order: {} as Record<string, string[]> });
+
+  // Background execution has no real hook here — the agent already runs on
+  // the connected server, not this process. What backgrounding the app can
+  // still do is arrange for a later background fetch to notice the reply
+  // landed and fire a notification (see background.ts); coming back to the
+  // foreground drops that watch since the normal 2s poll picks up again.
+  useEffect(() => {
+    const sub = AppState.addEventListener("change", (next) => {
+      if (next === "background") {
+        const s = stateRef.current;
+        if (!s.connected || !s.activeId) return;
+        const st = s.statuses[s.activeId];
+        const busy = !!st && (st.type === "busy" || st.type === "retry");
+        if (!busy) return;
+        const sess = s.sessions.find((x) => x.id === s.activeId);
+        saveWatchTask({
+          sessionID: s.activeId,
+          directory: sess?.directory,
+          title: sess ? sessionTitle(sess) : s.activeId,
+        }).catch(() => {});
+      } else if (next === "active") {
+        clearWatchTask().catch(() => {});
+      }
+    });
+    return () => sub.remove();
+  }, []);
 
   const mergeMessage = useCallback((sessionID: string, msg: StoredMessage) => {
     knownRef.current.messages[sessionID] = knownRef.current.messages[sessionID] || {};
@@ -555,6 +593,16 @@ export function StoreProvider({
           error: e instanceof ApiError ? e.message : t("store.connectFailed"),
         }));
         onConnectionFailure?.(e);
+        // A wrong password needs the user; a dropped Wi-Fi bar or a server
+        // that's asleep doesn't — keep whatever sessions/messages are
+        // already loaded and quietly try again once it's back.
+        const authFailure = e instanceof ApiError && e.status === 401;
+        if (!authFailure) {
+          if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
+          retryTimerRef.current = setTimeout(() => {
+            if (lastConnRef.current === c) connect(c);
+          }, 5000);
+        }
       }
     },
     [applyEvent, onConnectionFailure],
@@ -562,6 +610,10 @@ export function StoreProvider({
 
   const disconnect = useCallback(() => {
     subRef.current?.abort();
+    if (retryTimerRef.current) {
+      clearTimeout(retryTimerRef.current);
+      retryTimerRef.current = null;
+    }
     setState((s) => ({
       ...s,
       connected: false,
@@ -637,6 +689,14 @@ export function StoreProvider({
     async (text: string, attach?: Attachment[]) => {
       const files = attach || [];
       if (!state.connected) {
+        // A server is configured but currently unreachable: don't silently
+        // reroute the message to on-device inference under a brand new
+        // local session — that's a different provider answering a question
+        // meant for the connected one, with no sign anything switched.
+        if (apiRef.current) {
+          setState((s) => ({ ...s, error: t("store.offlineSendBlocked") }));
+          return;
+        }
         let sid = state.activeId;
         if (!sid) {
           sid = "loc_" + Date.now();
@@ -1280,6 +1340,15 @@ export function StoreProvider({
     }
   }, []);
 
+  const readFile = useCallback(async (path: string, directory?: string) => {
+    if (!apiRef.current) return null;
+    try {
+      return await apiRef.current.readFileContent(path, directory);
+    } catch {
+      return null;
+    }
+  }, []);
+
   const refresh = useCallback(async () => {
     if (!apiRef.current) return;
     // Same scoping as connect(): one request per project, or every project
@@ -1326,6 +1395,25 @@ export function StoreProvider({
   useEffect(() => {
     if (conn && lastConnRef.current !== conn) {
       lastConnRef.current = conn;
+      // Paint the last-synced session before the server has even answered,
+      // so relaunching offline shows something instead of a blank chat.
+      if (!hydratedCacheRef.current) {
+        hydratedCacheRef.current = true;
+        loadServerCache().then((cache) => {
+          if (!cache) return;
+          setState((s) =>
+            s.connected
+              ? s
+              : {
+                  ...s,
+                  sessions: cache.sessions,
+                  projects: cache.projects,
+                  activeId: cache.activeId,
+                  messages: { ...cache.messages, ...s.messages },
+                },
+          );
+        });
+      }
       connect(conn);
     } else if (!conn && lastConnRef.current) {
       // App.tsx cleared the saved connection (Settings → Disconnect) --
@@ -1382,6 +1470,24 @@ export function StoreProvider({
       subRef.current?.abort();
     };
   }, [conn, connect, disconnect]);
+
+  // Keeps the offline cache (above) fresh: written a second after things
+  // settle, not on every keystroke of a streamed reply.
+  useEffect(() => {
+    if (!state.connected) return;
+    if (saveCacheTimerRef.current) clearTimeout(saveCacheTimerRef.current);
+    saveCacheTimerRef.current = setTimeout(() => {
+      saveServerCache({
+        sessions: state.sessions,
+        projects: state.projects,
+        activeId: state.activeId,
+        messages: state.activeId ? { [state.activeId]: state.messages[state.activeId] || [] } : {},
+      });
+    }, 1000);
+    return () => {
+      if (saveCacheTimerRef.current) clearTimeout(saveCacheTimerRef.current);
+    };
+  }, [state.connected, state.sessions, state.projects, state.activeId, state.activeId ? state.messages[state.activeId] : undefined]);
 
   settingsRef.current = state.settings;
 
@@ -1449,6 +1555,7 @@ export function StoreProvider({
     removeAttachment,
     clearAttachments,
     findFiles,
+    readFile,
     registered: state.registered,
     onlyWeb: state.onlyWeb,
     setOnlyWeb,
@@ -1456,6 +1563,7 @@ export function StoreProvider({
     settings: state.settings,
     updateSettings,
     isLocal: !state.connected,
+    hasServer: !!api,
     local: state.local,
     presets: state.presets,
     providers: allPresets(state.presets),

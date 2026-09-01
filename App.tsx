@@ -3,13 +3,13 @@ import { ActivityIndicator, Animated, Easing, KeyboardAvoidingView, Platform, Pr
 import { StatusBar } from "expo-status-bar";
 import * as Notifications from "expo-notifications";
 import { SafeAreaProvider, useSafeAreaInsets } from "react-native-safe-area-context";
-import { Connection } from "./src/api";
+import { ApiError, Connection } from "./src/api";
 import { StoreProvider, useStore } from "./src/store";
 import { makeTheme } from "./src/theme";
 import { Lang, setLocale, t } from "./src/i18n";
 import { ChatScreen } from "./src/chat";
 import { UpdateOverlay } from "./src/update-overlay";
-import { registerBackgroundUpdateTask } from "./src/background";
+import { registerBackgroundUpdateTask, registerBackgroundWatchTask } from "./src/background";
 import { FoundServer, isOnWifi, ownSubnet, scanForServers } from "./src/scanner";
 import {
   loadConnection,
@@ -130,6 +130,7 @@ export default function App() {
 
   useEffect(() => {
     registerBackgroundUpdateTask().catch(console.error);
+    registerBackgroundWatchTask().catch(console.error);
 
     (async () => {
       try {
@@ -151,7 +152,18 @@ export default function App() {
     })();
   }, []);
 
-  const handleConnectionFailure = useCallback(() => setConn(null), []);
+  /**
+   * A dropped Wi-Fi bar used to be indistinguishable from "disconnect the
+   * server": any failure — including a plain timeout — cleared `conn`, which
+   * unmounts StoreProvider's connection and silently falls back to local
+   * mode, losing sight of the connected session. Only a real auth failure
+   * (wrong password) actually needs the user to reconnect by hand; anything
+   * else is transient, and the store now retries on its own while keeping
+   * whatever sessions/messages it already had.
+   */
+  const handleConnectionFailure = useCallback((e: unknown) => {
+    if (e instanceof ApiError && e.status === 401) setConn(null);
+  }, []);
 
   const dropServer = useCallback(() => {
     clearConnection();

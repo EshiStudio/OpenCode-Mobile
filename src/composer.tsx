@@ -1,4 +1,4 @@
-import React, { useRef } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { t } from "./i18n";
 import {
   Animated,
@@ -10,7 +10,7 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { BrandIcon, Icon } from "./icons";
+import { BrandIcon, Icon, IconName } from "./icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useKeyboardOffset, useKeyboardVisible } from "./keyboard";
 import { Attachment } from "./store";
@@ -24,6 +24,34 @@ const KEYBOARD_GAP = 14;
 
 /** One line of text plus the input's own padding — keeps the box from jumping. */
 const INPUT_MIN_HEIGHT = 42;
+
+export type SlashCommandId = "help" | "clear" | "model" | "settings" | "branch" | "files" | "rename";
+
+/** Registry of `/` commands. Add an entry here and a case in ChatScreen's onCommand to extend. */
+export const SLASH_COMMANDS: { id: SlashCommandId; icon: IconName }[] = [
+  { id: "model", icon: "models" },
+  { id: "branch", icon: "branch" },
+  { id: "files", icon: "open-file" },
+  { id: "rename", icon: "pencil-line" },
+  { id: "settings", icon: "settings-gear" },
+  { id: "clear", icon: "close" },
+  { id: "help", icon: "info" },
+];
+
+/** Finds an active `@file` or `/command` trigger ending right at the cursor. */
+function detectTrigger(
+  text: string,
+  cursor: number,
+): { kind: "@" | "/"; query: string; start: number } | null {
+  const head = text.slice(0, cursor);
+  // "/" only counts as a command trigger at the very start of the message —
+  // elsewhere it is just a path separator.
+  const slash = head.match(/^\/(\S*)$/);
+  if (slash) return { kind: "/", query: slash[1], start: 0 };
+  const at = head.match(/(^|\s)@(\S*)$/);
+  if (at) return { kind: "@", query: at[2], start: cursor - at[2].length - 1 };
+  return null;
+}
 
 export function Composer({
   theme,
@@ -47,6 +75,9 @@ export function Composer({
   onPickProject,
   onPickBranch,
   onRemoveAttach,
+  onFilesQuery,
+  onPickFile,
+  onCommand,
 }: {
   theme: Theme;
   value: string;
@@ -69,6 +100,12 @@ export function Composer({
   onPickProject: () => void;
   onPickBranch: () => void;
   onRemoveAttach: (index: number) => void;
+  /** Searches the open project's files for the `@` picker. */
+  onFilesQuery?: (query: string) => Promise<string[]>;
+  /** A file was picked from the `@` picker: mention text is already inserted, this attaches its content. */
+  onPickFile?: (path: string) => void;
+  /** A `/` command was picked from the palette. */
+  onCommand?: (id: SlashCommandId) => void;
 }) {
   const inputRef = useRef<TextInput>(null);
   const kbOffset = useKeyboardOffset();
@@ -79,6 +116,47 @@ export function Composer({
   // only applies at rest.
   const insets = useSafeAreaInsets();
   const send = usePressScale(0.88);
+
+  const [selection, setSelection] = useState({ start: 0, end: 0 });
+  const trigger = useMemo(() => detectTrigger(value, selection.end), [value, selection.end]);
+  const [fileRows, setFileRows] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (!trigger || trigger.kind !== "@" || !onFilesQuery) {
+      setFileRows([]);
+      return;
+    }
+    let cancelled = false;
+    if (trigger.query.length < 1) {
+      setFileRows([]);
+      return;
+    }
+    onFilesQuery(trigger.query).then((res) => {
+      if (!cancelled) setFileRows(res.slice(0, 8));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [trigger?.kind, trigger?.query, onFilesQuery]);
+
+  const commandRows = useMemo(() => {
+    if (!trigger || trigger.kind !== "/") return [];
+    const q = trigger.query.toLowerCase();
+    return SLASH_COMMANDS.filter((c) => !q || t(`composer.command.${c.id}`).toLowerCase().includes(q) || c.id.includes(q));
+  }, [trigger?.kind, trigger?.query]);
+
+  function pickFile(path: string) {
+    if (!trigger) return;
+    const insertion = `@${path} `;
+    const next = value.slice(0, trigger.start) + insertion + value.slice(selection.end);
+    onChange(next);
+    onPickFile?.(path);
+  }
+
+  function pickCommand(id: SlashCommandId) {
+    onChange("");
+    onCommand?.(id);
+  }
 
   return (
     <Animated.View style={{ paddingBottom: kbOffset }}>
@@ -96,12 +174,52 @@ export function Composer({
           </ScrollView>
         ) : null}
 
+        {trigger && trigger.kind === "@" && fileRows.length > 0 ? (
+          <View style={[s.suggest, { borderColor: theme.bd, backgroundColor: theme.bg }]}>
+            <ScrollView keyboardShouldPersistTaps="handled" style={{ maxHeight: 220 }}>
+              {fileRows.map((f) => (
+                <Pressable
+                  key={f}
+                  onPress={() => pickFile(f)}
+                  style={({ pressed }) => [s.suggestRow, { backgroundColor: pressed ? theme.l2 : "transparent" }]}
+                >
+                  <Icon name="open-file" size={13} color={theme.muted} />
+                  <Text style={{ fontSize: 12.5, color: theme.ink, flex: 1 }} numberOfLines={1}>
+                    {f}
+                  </Text>
+                </Pressable>
+              ))}
+            </ScrollView>
+          </View>
+        ) : null}
+
+        {trigger && trigger.kind === "/" && commandRows.length > 0 ? (
+          <View style={[s.suggest, { borderColor: theme.bd, backgroundColor: theme.bg }]}>
+            <ScrollView keyboardShouldPersistTaps="handled" style={{ maxHeight: 220 }}>
+              {commandRows.map((c) => (
+                <Pressable
+                  key={c.id}
+                  onPress={() => pickCommand(c.id)}
+                  style={({ pressed }) => [s.suggestRow, { backgroundColor: pressed ? theme.l2 : "transparent" }]}
+                >
+                  <Icon name={c.icon} size={13} color={theme.muted} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 12.5, color: theme.ink }}>/{c.id}</Text>
+                    <Text style={{ fontSize: 11, color: theme.faint }}>{t(`composer.command.${c.id}`)}</Text>
+                  </View>
+                </Pressable>
+              ))}
+            </ScrollView>
+          </View>
+        ) : null}
+
         <View style={[s.box, { borderColor: theme.bd, backgroundColor: theme.bg }]}>
           <TextInput
             ref={inputRef}
             multiline
             value={value}
             onChangeText={onChange}
+            onSelectionChange={(e) => setSelection(e.nativeEvent.selection)}
             placeholder={t("composer.placeholder")}
             placeholderTextColor={theme.faint}
             style={{
@@ -217,6 +335,19 @@ function AttachChip({ theme, att, onRemove }: { theme: Theme; att: Attachment; o
 }
 
 const s = StyleSheet.create({
+  suggest: {
+    borderWidth: 1,
+    borderRadius: 9,
+    marginBottom: 7,
+    overflow: "hidden",
+  },
+  suggestRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingHorizontal: 11,
+    paddingVertical: 8,
+  },
   box: {
     borderWidth: 1,
     borderRadius: 7,

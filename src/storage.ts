@@ -2,6 +2,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Lang } from "./i18n";
 import * as SecureStore from "expo-secure-store";
 import { Connection } from "./api";
+import { Project, SessionInfo, StoredMessage } from "./types";
 
 const K_HOST = "ocm.host";
 const K_USER = "ocm.user";
@@ -97,6 +98,75 @@ export async function loadCrash(): Promise<CrashReport | null> {
 
 export async function clearCrash(): Promise<void> {
   await AsyncStorage.removeItem(K_CRASH);
+}
+
+const K_WATCH = "ocm.watch-task";
+
+/**
+ * The session a background task should poll for while the app is backgrounded,
+ * so a completion notification can fire without the phone being open. Only
+ * the connected server case applies — on-device work runs in this process, so
+ * there is nothing left running once the app is backgrounded.
+ */
+export type WatchTask = { sessionID: string; directory?: string; title: string };
+
+export async function loadWatchTask(): Promise<WatchTask | null> {
+  try {
+    const raw = await AsyncStorage.getItem(K_WATCH);
+    return raw ? (JSON.parse(raw) as WatchTask) : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function saveWatchTask(task: WatchTask): Promise<void> {
+  try {
+    await AsyncStorage.setItem(K_WATCH, JSON.stringify(task));
+  } catch {
+    // best-effort
+  }
+}
+
+export async function clearWatchTask(): Promise<void> {
+  try {
+    await AsyncStorage.removeItem(K_WATCH);
+  } catch {
+    // best-effort
+  }
+}
+
+const K_SRV_CACHE = "ocm.server-cache";
+
+/**
+ * The last-synced view of a connected server: session list, projects, and the
+ * messages of whichever session was open. Read on a cold start before the
+ * server has answered, so a relaunch offline still shows something instead
+ * of a blank chat; overwritten with fresh data as soon as it's reachable
+ * again. Only the open session's messages are kept, not the whole history,
+ * to keep this small.
+ */
+export type ServerCache = {
+  sessions: SessionInfo[];
+  projects: Project[];
+  activeId: string | null;
+  messages: Record<string, StoredMessage[]>;
+};
+
+export async function loadServerCache(): Promise<ServerCache | null> {
+  try {
+    const raw = await AsyncStorage.getItem(K_SRV_CACHE);
+    return raw ? (JSON.parse(raw) as ServerCache) : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function saveServerCache(c: ServerCache): Promise<void> {
+  try {
+    await AsyncStorage.setItem(K_SRV_CACHE, JSON.stringify(c));
+  } catch {
+    // best-effort — a full disk or oversized payload just means no offline cache this time
+  }
 }
 
 const K_REG = "ocm.registered";

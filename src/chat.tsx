@@ -1,16 +1,19 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
+  ActivityIndicator,
   Alert,
   FlatList,
   InteractionManager,
   Keyboard,
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from "react-native";
+import * as Clipboard from "expo-clipboard";
 import { Icon } from "./icons";
 import { Attachment, useStore } from "./store";
 import { imageDataUrl, isTextual, keepLocally, pickMedia, textPreview } from "./media";
@@ -23,8 +26,8 @@ import { BUILTIN_IDS } from "./local-ai";
 import { installUpdate } from "./update";
 import { SessionsPanel, visibleSessions } from "./panel";
 import { SettingsScreen } from "./settings";
-import { Composer } from "./composer";
-import { Avatar, Wordmark } from "./ui";
+import { Composer, SlashCommandId } from "./composer";
+import { Avatar, Wordmark, mono } from "./ui";
 import { catalogModels, presetName } from "./local-ai";
 import { CLOUD_IDS, CloudId, cloudName } from "./clouds";
 import { LocalProject } from "./storage";
@@ -86,9 +89,22 @@ export function ChatScreen({
   const [permRemember, setPermRemember] = useState(false);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [draft, setDraft] = useState("");
+  const [fileViewer, setFileViewer] = useState<{ path: string; content: string; loading: boolean; error?: string } | null>(null);
   const listRef = useRef<FlatList<StoredMessage>>(null);
+  // Whether the list is scrolled (near) the bottom. Auto-scroll on new
+  // content only applies while true, so reading back through history during
+  // generation doesn't get yanked back down.
+  const [atBottom, setAtBottom] = useState(true);
+  const atBottomRef = useRef(true);
+  const setAtBottomBoth = useCallback((v: boolean) => {
+    atBottomRef.current = v;
+    setAtBottom(v);
+  }, []);
 
-  const localMode = store.isLocal;
+  // A configured server that's merely unreachable right now still shows its
+  // own (cached) sessions rather than falling back to unrelated on-device
+  // ones — `isLocal` alone can't tell "no server" from "server, offline".
+  const localMode = store.isLocal && !store.hasServer;
   const pool = localMode
     ? store.local.sessions.map((l) => ({
         id: l.id,
@@ -152,6 +168,14 @@ export function ChatScreen({
     if (!store.permissions.length) setPendingPerm(null);
   }, [store.permissions.length]);
 
+  // A freshly opened session should land at its latest message, not wherever
+  // the previous session's scroll happened to leave off.
+  useEffect(() => {
+    atBottomRef.current = true;
+    setAtBottom(true);
+    requestAnimationFrame(() => listRef.current?.scrollToEnd({ animated: false }));
+  }, [store.activeId]);
+
   const toggleMsg = (_sid: string, mid: string) => {
     setExpanded((e) => ({ ...e, [mid]: !e[mid] }));
   };
@@ -196,7 +220,7 @@ export function ChatScreen({
   // gesture.
   return (
     <View style={[styles.root, { backgroundColor: theme.bg }]} {...(settingsOpen ? {} : drawerSwipe.panHandlers)}>
-      {localMode && store.error ? (
+      {store.error ? (
         <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginHorizontal: 12, marginBottom: 6, padding: 9, borderRadius: 8, backgroundColor: theme.errBg }}>
           <Icon name="warning" size={14} color={theme.err} />
           <Text style={{ flex: 1, color: theme.err, fontSize: 12 }}>{store.error}</Text>
@@ -244,13 +268,40 @@ export function ChatScreen({
                   Keyboard.dismiss();
                 }}
                 onRevert={store.connected ? confirmRevert : undefined}
+                onFilePress={openFilePath}
               />
             )}
             ListFooterComponent={busyHere ? <PendingShim theme={theme} /> : null}
             contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 8 }}
-            onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: true })}
+            onContentSizeChange={() => {
+              if (atBottomRef.current) listRef.current?.scrollToEnd({ animated: true });
+            }}
+            onScroll={(e) => {
+              const { contentOffset, contentSize, layoutMeasurement } = e.nativeEvent;
+              const distanceFromBottom = contentSize.height - contentOffset.y - layoutMeasurement.height;
+              setAtBottomBoth(distanceFromBottom < 80);
+            }}
+            scrollEventThrottle={100}
           />
         )}
+        {!atBottom && (msgs.length > 0 || busyHere) ? (
+          <Pressable
+            onPress={() => {
+              setAtBottomBoth(true);
+              listRef.current?.scrollToEnd({ animated: true });
+            }}
+            style={({ pressed }) => [
+              styles.scrollDown,
+              {
+                backgroundColor: pressed ? theme.l3 : theme.l2,
+                borderColor: theme.bdSoft,
+                shadowColor: dark ? "#000" : "#000",
+              },
+            ]}
+          >
+            <Icon name="chevron-down" size={16} color={theme.ink} />
+          </Pressable>
+        ) : null}
       </View>
 
       <Composer
@@ -270,23 +321,19 @@ export function ChatScreen({
           const v = draft;
           setDraft("");
           store.send(v, store.attachments);
+          setAtBottomBoth(true);
+          requestAnimationFrame(() => listRef.current?.scrollToEnd({ animated: true }));
         }}
         onStop={store.abort}
         onAttach={() => setSheet("attach")}
-        onPickModel={() => {
-          setSheet("model");
-          if (localMode) {
-            store.providers
-              .filter((p) => store.keys[p.id] && !store.providerModels[p.id]?.length)
-              .forEach((p) => {
-                store.fetchProviderModels(p.id);
-              });
-          }
-        }}
+        onPickModel={openModelPicker}
         onPickVariant={() => setSheet("effort")}
         onPickProject={() => setSheet("project")}
         onPickBranch={() => setSheet("branch")}
         onRemoveAttach={(i) => store.removeAttachment(i)}
+        onFilesQuery={localMode ? undefined : store.findFiles}
+        onPickFile={(path) => setAttachAtlas({ name: baseName(path) || path, path })}
+        onCommand={handleComposerCommand}
       />
 
       <SessionsPanel
@@ -572,6 +619,40 @@ export function ChatScreen({
           </View>
         </View>
       ) : null}
+
+      {/* tapped file path preview */}
+      {fileViewer ? (
+        <View style={[StyleSheet.absoluteFill, { zIndex: 46, backgroundColor: theme.bg }]}>
+          <View style={[styles.fileViewerHead, { borderBottomColor: theme.bdSoft }]}>
+            <Text style={[mono, { flex: 1, fontSize: 12.5, color: theme.ink }]} numberOfLines={1}>
+              {fileViewer.path}
+            </Text>
+            {!fileViewer.loading && !fileViewer.error ? (
+              <Pressable onPress={() => Clipboard.setStringAsync(fileViewer.content)} hitSlop={8} style={{ padding: 6 }}>
+                <Icon name="copy" size={15} color={theme.muted} />
+              </Pressable>
+            ) : null}
+            <Pressable onPress={() => setFileViewer(null)} hitSlop={8} style={{ padding: 6 }}>
+              <Icon name="close" size={16} color={theme.muted} />
+            </Pressable>
+          </View>
+          {fileViewer.loading ? (
+            <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
+              <ActivityIndicator color={theme.muted} />
+            </View>
+          ) : fileViewer.error ? (
+            <View style={{ flex: 1, alignItems: "center", justifyContent: "center", padding: 24 }}>
+              <Text style={{ color: theme.muted, fontSize: 13, textAlign: "center" }}>{fileViewer.error}</Text>
+            </View>
+          ) : (
+            <ScrollView contentContainerStyle={{ padding: 14 }}>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                <Text style={[mono, { fontSize: 12.5, lineHeight: 18, color: theme.ink }]}>{fileViewer.content}</Text>
+              </ScrollView>
+            </ScrollView>
+          )}
+        </View>
+      ) : null}
     </View>
   );
 
@@ -586,6 +667,63 @@ export function ChatScreen({
 
   function closeActive() {
     store.closeSession();
+  }
+
+  function openModelPicker() {
+    setSheet("model");
+    if (localMode) {
+      store.providers
+        .filter((p) => store.keys[p.id] && !store.providerModels[p.id]?.length)
+        .forEach((p) => {
+          store.fetchProviderModels(p.id);
+        });
+    }
+  }
+
+  function handleComposerCommand(id: SlashCommandId) {
+    switch (id) {
+      case "model":
+        openModelPicker();
+        break;
+      case "branch":
+        setSheet("branch");
+        break;
+      case "files":
+        setSheet("filePick");
+        break;
+      case "rename":
+        if (active) {
+          setRenaming(active.id);
+          setRenameValue(sessionTitle(active));
+        }
+        break;
+      case "settings":
+        Keyboard.dismiss();
+        setSettingsOpen(true);
+        break;
+      case "help":
+        setHelpOpen(true);
+        break;
+      case "clear":
+        break;
+    }
+  }
+
+  function openFilePath(path: string) {
+    if (localMode || !store.connected) {
+      Alert.alert(t("chat.filePreview"), t("chat.filePreviewOffline"));
+      return;
+    }
+    setFileViewer({ path, content: "", loading: true });
+    store.readFile(path, projDir).then((res) => {
+      if (!res) {
+        setFileViewer({ path, content: "", loading: false, error: t("chat.filePreviewFailed") });
+      } else if (res.type === "binary") {
+        setFileViewer({ path, content: "", loading: false, error: t("chat.filePreviewBinary") });
+      } else {
+        setFileViewer({ path, content: res.content, loading: false });
+      }
+    });
   }
 
   function setAttachAtlas(f: { name: string; path: string }) {
@@ -923,6 +1061,30 @@ const styles = StyleSheet.create({
     height: 34,
     maxWidth: 230,
     flexShrink: 1,
+  },
+  scrollDown: {
+    position: "absolute",
+    bottom: 10,
+    alignSelf: "center",
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  fileViewerHead: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 12,
+    paddingTop: 50,
+    paddingBottom: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth,
   },
   fileSearch: {
     flexDirection: "row",

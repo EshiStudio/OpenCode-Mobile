@@ -146,6 +146,10 @@ const EN: Record<string, string> = {
     "The app talks to the opencode server on your computer. To make the server reachable from the phone, run this on the PC:",
   "chat.help.address":
     "Connect using this computer's address on the local network (for example 192.168.1.96:41111), user opencode, password from OPENCODE_SERVER_PASSWORD.",
+  "chat.filePreview": "File preview",
+  "chat.filePreviewOffline": "Connect to a computer to open file paths from a reply.",
+  "chat.filePreviewFailed": "Could not read this file.",
+  "chat.filePreviewBinary": "This file isn't text, so it can't be previewed here.",
   "chat.attach.photo": "Photo",
   "chat.attach.photoDesc": "from the device gallery",
   "chat.attach.media": "Media",
@@ -157,6 +161,13 @@ const EN: Record<string, string> = {
   "chat.storage.device": "Device",
   "chat.storage.deviceDesc": "the app's working folder",
   "composer.placeholder": "Ask anything…",
+  "composer.command.model": "Choose model",
+  "composer.command.branch": "Choose branch",
+  "composer.command.files": "Attach a project file",
+  "composer.command.rename": "Rename this session",
+  "composer.command.settings": "Open settings",
+  "composer.command.clear": "Clear the draft",
+  "composer.command.help": "Connection help",
 
   /* ------------------------------------------------------------ sessions -- */
   "sessions.title": "Sessions",
@@ -471,6 +482,7 @@ const EN: Record<string, string> = {
   /* --------------------------------------------------------------- store -- */
   "store.reconnecting": "Reconnecting to the server…",
   "store.connectFailed": "Could not connect to the server",
+  "store.offlineSendBlocked": "No connection to the server. Reconnecting — try again in a moment.",
   "store.sendFailed": "Could not send the message",
   "store.noProvider": "Provider not found. Pick one in Settings → Providers",
   "store.noKey": "Add the provider's API key and model in Settings → Providers",
@@ -645,6 +657,10 @@ const RU: Record<string, string> = {
     "Приложение общается с сервером opencode на вашем ПК. Чтобы сервер был доступен с телефона, запустите на ПК:",
   "chat.help.address":
     "Адрес для подключения — IP этого ПК в локальной сети (например 192.168.1.96:41111), логин opencode, пароль из OPENCODE_SERVER_PASSWORD.",
+  "chat.filePreview": "Просмотр файла",
+  "chat.filePreviewOffline": "Подключитесь к компьютеру, чтобы открывать пути файлов из ответа.",
+  "chat.filePreviewFailed": "Не удалось прочитать файл.",
+  "chat.filePreviewBinary": "Это не текстовый файл — просмотр здесь недоступен.",
   "chat.attach.photo": "Фото",
   "chat.attach.photoDesc": "из галереи устройства",
   "chat.attach.media": "Медиа",
@@ -656,6 +672,13 @@ const RU: Record<string, string> = {
   "chat.storage.device": "Устройство",
   "chat.storage.deviceDesc": "рабочая папка приложения",
   "composer.placeholder": "Спросите что угодно…",
+  "composer.command.model": "Выбрать модель",
+  "composer.command.branch": "Выбрать ветку",
+  "composer.command.files": "Прикрепить файл проекта",
+  "composer.command.rename": "Переименовать сессию",
+  "composer.command.settings": "Открыть настройки",
+  "composer.command.clear": "Очистить черновик",
+  "composer.command.help": "Помощь с подключением",
 
   "sessions.title": "Сессии",
   "sessions.search": "Поиск сессий",
@@ -960,6 +983,7 @@ const RU: Record<string, string> = {
 
   "store.reconnecting": "Переподключение к серверу…",
   "store.connectFailed": "Не удалось подключиться к серверу",
+  "store.offlineSendBlocked": "Нет связи с сервером. Переподключаемся — попробуйте ещё раз через момент.",
   "store.sendFailed": "Не удалось отправить сообщение",
   "store.noProvider": "Провайдер не найден. Выберите его в Настройках → Провайдеры",
   "store.noKey": "Добавьте API-ключ и модель провайдера в Настройках → Провайдеры",
