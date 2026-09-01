@@ -149,6 +149,29 @@ export function Composer({
     };
   }, [trigger?.kind, trigger?.query, onFilesQuery]);
 
+  // A file picked from the @ list is already named inline by its (colored)
+  // mention — showing it again as a chip here would just say the same thing
+  // twice. `viaMention` marks that directly, but as a second, independent
+  // check (seen live: the flag alone didn't reliably suppress the chip on
+  // one real device, cause unconfirmed) also hide anything whose name
+  // already appears as a `@name` in the draft — the visible outcome that
+  // actually matters, regardless of how the attachment got added.
+  const mentionedNames = useMemo(() => {
+    const names = new Set<string>();
+    for (const m of value.match(/@(\S+)/g) || []) {
+      const base = m.slice(1).split("/").pop();
+      if (base) names.add(base.toLowerCase());
+    }
+    return names;
+  }, [value]);
+  const visibleAttachments = useMemo(
+    () =>
+      attachments
+        .map((a, i) => ({ a, i }))
+        .filter(({ a }) => !a.viaMention && !mentionedNames.has(a.name.toLowerCase())),
+    [attachments, mentionedNames],
+  );
+
   const commandRows = useMemo(() => {
     if (!trigger || trigger.kind !== "/") return [];
     const q = trigger.query.toLowerCase();
@@ -171,14 +194,14 @@ export function Composer({
   return (
     <Animated.View style={{ paddingBottom: kbOffset }}>
       <View style={{ paddingHorizontal: 16, paddingBottom: 10 + (typing ? KEYBOARD_GAP : insets.bottom) }}>
-        {attachments.length ? (
+        {visibleAttachments.length ? (
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
             contentContainerStyle={{ gap: 7, paddingBottom: 7 }}
           >
-            {attachments.map((a, i) => (
+            {visibleAttachments.map(({ a, i }) => (
               <AttachChip key={`${a.name}-${i}`} theme={theme} att={a} onRemove={() => onRemoveAttach(i)} />
             ))}
           </ScrollView>
@@ -363,7 +386,7 @@ function AttachChip({ theme, att, onRemove }: { theme: Theme; att: Attachment; o
         </Text>
         {att.size ? <Text style={{ fontSize: 10, color: theme.faint }}>{humanSize(att.size)}</Text> : null}
       </View>
-      <Pressable onPress={onRemove} hitSlop={8}>
+      <Pressable onPress={onRemove} hitSlop={12}>
         <Icon name="close" size={13} color={theme.faint} />
       </Pressable>
     </View>
