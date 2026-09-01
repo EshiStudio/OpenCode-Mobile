@@ -133,7 +133,13 @@ export type StoreState = {
   settings: AppSettings;
   updateSettings: (patch: Partial<AppSettings>) => void;
   isLocal: boolean;
-  /** A server connection is configured, whether or not it's reachable right now. */
+  /**
+   * There's an actual connected-server session to fall back to while
+   * offline: currently connected, or cached sessions from a prior
+   * connection. A saved server address that has never actually connected
+   * (or a fresh account with no sessions yet) does NOT count — those installs
+   * should keep behaving exactly like local-only ones, not go blank.
+   */
   hasServer: boolean;
   local: LocalState;
   /** User-added providers only, as persisted. */
@@ -689,11 +695,15 @@ export function StoreProvider({
     async (text: string, attach?: Attachment[]) => {
       const files = attach || [];
       if (!state.connected) {
-        // A server is configured but currently unreachable: don't silently
-        // reroute the message to on-device inference under a brand new
-        // local session — that's a different provider answering a question
-        // meant for the connected one, with no sign anything switched.
-        if (apiRef.current) {
+        // A server is configured but currently unreachable — and there's an
+        // actual connected session in view (real cached sessions, not just a
+        // saved-but-never-used address): don't silently reroute the message
+        // to on-device inference under a brand new local session, that's a
+        // different provider answering a question meant for the connected
+        // one with no sign anything switched. A saved address that has never
+        // actually connected (or an empty account) falls through to local
+        // sending as always — most installs have no server at all.
+        if (apiRef.current && state.sessions.length > 0) {
           setState((s) => ({ ...s, error: t("store.offlineSendBlocked") }));
           return;
         }
@@ -1563,7 +1573,7 @@ export function StoreProvider({
     settings: state.settings,
     updateSettings,
     isLocal: !state.connected,
-    hasServer: !!api,
+    hasServer: !!api && state.sessions.length > 0,
     local: state.local,
     presets: state.presets,
     providers: allPresets(state.presets),
