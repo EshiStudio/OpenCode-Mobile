@@ -1430,8 +1430,18 @@ export function StoreProvider({
    */
   const findFiles = useCallback(async (q: string) => {
     if (stateRef.current.connected && apiRef.current) {
+      // Same directory scoping as everywhere else the server is asked for a
+      // project's own data (see connect()'s comment on listSessions): with
+      // no directory, /find/file searches wherever the server happens to
+      // have been launched from, not the project this chat is actually
+      // about. Verified live — dropping this param silently searches the
+      // wrong folder instead of erroring.
+      const s0 = stateRef.current;
+      const activeSession = s0.sessions.find((x) => x.id === s0.activeId);
+      const scopedProject = s0.projects.find((p) => p.id === s0.activeServerProject);
+      const directory = activeSession?.directory || scopedProject?.worktree || s0.sessions.find((x) => x.directory)?.directory;
       try {
-        return await apiRef.current.findFiles(q);
+        return await apiRef.current.findFiles(q, directory);
       } catch {
         return [];
       }
