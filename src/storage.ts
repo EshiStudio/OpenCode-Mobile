@@ -21,8 +21,12 @@ export async function loadConnection(): Promise<Connection | null> {
     const saved = await AsyncStorage.getItem(K_SAVED);
     if (!saved) return null;
     const conn = JSON.parse(saved);
-    const password = await SecureStore.getItemAsync(K_PASS);
-    if (!password) return null;
+    // An empty password is a real configuration, not a missing one: `opencode
+    // serve` runs without OPENCODE_SERVER_PASSWORD and only warns. Treating it
+    // as "nothing saved" meant such a server connected once, by hand, and was
+    // then quietly forgotten on the next launch — the app came back in local
+    // mode with the computer's sessions and projects gone, and never retried.
+    const password = (await SecureStore.getItemAsync(K_PASS)) || "";
     return {
       host: conn.host,
       username: conn.username,
@@ -34,8 +38,14 @@ export async function loadConnection(): Promise<Connection | null> {
 }
 
 export async function saveConnection(conn: Connection): Promise<void> {
-  await AsyncStorage.setItem(K_SAVED, JSON.stringify({ host: conn.host, username: conn.username }));
-  await SecureStore.setItemAsync(K_PASS, conn.password);
+  await AsyncStorage.setItem(
+    K_SAVED,
+    JSON.stringify({ host: conn.host, username: conn.username, hasPassword: !!conn.password }),
+  );
+  // Storing an empty string is what SecureStore is least predictable about, so
+  // an empty password is recorded by the absence of the entry instead.
+  if (conn.password) await SecureStore.setItemAsync(K_PASS, conn.password);
+  else await SecureStore.deleteItemAsync(K_PASS).catch(() => {});
 }
 
 export async function loadSaved(): Promise<SavedConn | null> {

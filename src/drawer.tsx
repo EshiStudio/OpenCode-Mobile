@@ -35,6 +35,14 @@ export function Drawer({
     Animated.timing(tx, { toValue: open ? 0 : -340, duration: 200, useNativeDriver: true }).start();
   }, [open, tx]);
 
+  // Opening this is the moment the project list is read, so it is also the
+  // moment to make sure it is current — waiting out the timer here would show
+  // a list already known to be stale.
+  const refreshProjects = store.refreshProjects;
+  React.useEffect(() => {
+    if (open) refreshProjects().catch(() => {});
+  }, [open, refreshProjects]);
+
   const now = t("common.now");
   const groups = [
     { label: t("common.today"), items: store.sessions.filter((s) => !isBusy(store.statuses[s.id]) && isToday(s)) },

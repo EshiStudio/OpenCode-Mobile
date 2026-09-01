@@ -129,6 +129,8 @@ export type StoreState = {
   /** Server project the sessions list is scoped to; "" means every session. */
   activeServerProject: string;
   setActiveServerProject: (id: string) => void;
+  /** Re-asks the server which projects exist; the list is otherwise on a timer. */
+  refreshProjects: () => Promise<void>;
   modelId: string | null;
   providerId: string | null;
   variants: EffortVariant[];
@@ -247,6 +249,9 @@ const CLOUD_FILES_TTL = 10 * 60_000;
 
 /** Folder listings requested at once while walking a cloud project. */
 const CLOUD_WALK_WIDTH = 8;
+
+/** How often the server is re-asked which projects exist. One request. */
+const PROJECT_REFRESH_MS = 20_000;
 
 /** How long a device project's file listing is reused. Short: local edits should show up. */
 const LOCAL_FILES_TTL = 15_000;
@@ -885,6 +890,78 @@ export function StoreProvider({
     registerRef.current(s.id);
     return s.id;
   }, [state.connected, state.activeServerProject, state.projects]);
+
+  /**
+   * Re-reads the server's project list.
+   *
+   * The list used to be fetched once, at connect, and never again — so a
+   * project started on the computer after the phone connected simply did not
+   * exist as far as the phone was concerned, however long you waited, until
+   * the connection was torn down and made again. Nothing in the event stream
+   * announces a new project either, so this has to ask.
+   *
+   * Only genuinely new projects have their sessions fetched. Re-asking for
+   * every project's sessions on a timer would be one request per project
+   * every time, and a computer that has been used for a while has dozens.
+   */
+  const refreshProjects = useCallback(async () => {
+    const api = apiRef.current;
+    if (!api || !stateRef.current.connected) return;
+    let projects: Project[];
+    try {
+      projects = await api.listProjects();
+    } catch {
+      // The stream's own reconnect handles a server that has gone away; a
+      // failed refresh just means the list stays as it is.
+      return;
+    }
+    // Keyed by worktree, not id: the server files every directory it doesn't
+    // recognise as a repository under the id "global", so a brand new folder
+    // can arrive wearing an id the phone has already seen — and would then be
+    // taken for a project it already knew, sessions and all.
+    const known = new Set(stateRef.current.projects.map((p) => p.worktree));
+    const added = projects.filter((p) => p.worktree && !known.has(p.worktree));
+    const fetched = await Promise.all(
+      added.map((p) =>
+        Promise.all([
+          api.listSessions(p.worktree).catch(() => [] as SessionInfo[]),
+          api.getSessionStatus(p.worktree).catch(() => ({}) as Record<string, SessionStatus>),
+        ]),
+      ),
+    );
+    setState((s) => {
+      if (!s.connected) return s;
+      const byID = new Map(s.sessions.map((x) => [x.id, x]));
+      const statuses = { ...s.statuses };
+      for (const [list, st] of fetched) {
+        for (const x of list) byID.set(x.id, x);
+        Object.assign(statuses, st);
+      }
+      return {
+        ...s,
+        projects,
+        sessions: [...byID.values()].sort((a, b) => (b.time?.updated || 0) - (a.time?.updated || 0)),
+        statuses,
+      };
+    });
+  }, []);
+
+  // Kept current on a timer, and immediately whenever the app is opened —
+  // coming back to the phone after making a project on the computer is exactly
+  // when the new one is being looked for.
+  useEffect(() => {
+    if (!state.connected) return;
+    const timer = setInterval(() => {
+      refreshProjects().catch(() => {});
+    }, PROJECT_REFRESH_MS);
+    const sub = AppState.addEventListener("change", (next) => {
+      if (next === "active") refreshProjects().catch(() => {});
+    });
+    return () => {
+      clearInterval(timer);
+      sub.remove();
+    };
+  }, [state.connected, refreshProjects]);
 
   const send = useCallback(
     async (text: string, attach?: Attachment[]) => {
@@ -2010,6 +2087,7 @@ export function StoreProvider({
     setActiveProject,
     activeServerProject: state.activeServerProject,
     setActiveServerProject,
+    refreshProjects,
     localAbort: () => localAcRef.current?.abort(),
     clearError: () => setState((s) => ({ ...s, error: null })),
   };
