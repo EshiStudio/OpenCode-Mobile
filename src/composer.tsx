@@ -38,6 +38,42 @@ export const SLASH_COMMANDS: { id: SlashCommandId; icon: IconName }[] = [
   { id: "help", icon: "info" },
 ];
 
+/** {@link https://code.visualstudio.com/api/references/icons-in-labels} для близких к десктопу иконок. */
+function fileBadge(path: string): { icon: IconName; color: string; letter: string } {
+  const ext = (path.split(".").pop() || "").toLowerCase();
+  const name = path.split("/").pop() || path;
+  const m: Record<string, { icon: IconName; color: string }> = {
+    html: { icon: "link", color: "#e8722a" },
+    htm: { icon: "link", color: "#e8722a" },
+    md: { icon: "open-file", color: "#4a7ddb" },
+    mdx: { icon: "open-file", color: "#4a7ddb" },
+    ts: { icon: "code-lines", color: "#3178c6" },
+    tsx: { icon: "code-lines", color: "#3178c6" },
+    js: { icon: "code-lines", color: "#c9b13b" },
+    jsx: { icon: "code-lines", color: "#c9b13b" },
+    json: { icon: "code-lines", color: "#8f9aa5" },
+    css: { icon: "code-lines", color: "#563d7c" },
+    png: { icon: "photo", color: "#2f9e57" },
+    jpg: { icon: "photo", color: "#2f9e57" },
+    jpeg: { icon: "photo", color: "#2f9e57" },
+    gif: { icon: "photo", color: "#2f9e57" },
+    webp: { icon: "photo", color: "#2f9e57" },
+    op: { icon: "new-session", color: "#3b6ff0" },
+    pdf: { icon: "open-file", color: "#c24141" },
+    txt: { icon: "terminal", color: "#8f9aa5" },
+    log: { icon: "terminal", color: "#8f9aa5" },
+    sh: { icon: "terminal", color: "#2f9e57" },
+    ps1: { icon: "terminal", color: "#2f9e57" },
+  };
+  const hit = m[ext];
+  if (hit) return { ...hit, letter: "" };
+  if (!ext || ext === name) {
+    // no extension at all — likely a directory, mark it as such
+    return { icon: "folder", color: "#c9954a", letter: "" };
+  }
+  return { icon: "open-file", color: "#8f9aa5", letter: "" };
+}
+
 /** Finds an active `@file` or `/command` trigger ending right at the cursor. */
 function detectTrigger(
   text: string,
@@ -127,11 +163,7 @@ export function Composer({
       return;
     }
     let cancelled = false;
-    if (trigger.query.length < 1) {
-      setFileRows([]);
-      return;
-    }
-    onFilesQuery(trigger.query).then((res) => {
+    onFilesQuery(trigger.query || "").then((res) => {
       if (!cancelled) setFileRows(res.slice(0, 8));
     });
     return () => {
@@ -177,18 +209,42 @@ export function Composer({
         {trigger && trigger.kind === "@" && fileRows.length > 0 ? (
           <View style={[s.suggest, { borderColor: theme.bd, backgroundColor: theme.bg }]}>
             <ScrollView keyboardShouldPersistTaps="handled" style={{ maxHeight: 220 }}>
-              {fileRows.map((f) => (
-                <Pressable
-                  key={f}
-                  onPress={() => pickFile(f)}
-                  style={({ pressed }) => [s.suggestRow, { backgroundColor: pressed ? theme.l2 : "transparent" }]}
-                >
-                  <Icon name="open-file" size={13} color={theme.muted} />
-                  <Text style={{ fontSize: 12.5, color: theme.ink, flex: 1 }} numberOfLines={1}>
-                    {f}
-                  </Text>
-                </Pressable>
-              ))}
+              {fileRows.map((f) => {
+                const base = f.split("/").pop() || f;
+                const dir = f.slice(0, f.length - base.length).replace(/\/+$/, "");
+                const badge = fileBadge(f);
+                return (
+                  <Pressable
+                    key={f}
+                    onPress={() => pickFile(f)}
+                    style={({ pressed }) => [s.suggestRow, { backgroundColor: pressed ? theme.l2 : "transparent" }]}
+                  >
+                    <View
+                      style={{
+                        width: 24,
+                        height: 24,
+                        borderRadius: 6,
+                        alignItems: "center",
+                        justifyContent: "center",
+                        backgroundColor: theme.l2,
+                        flexShrink: 0,
+                      }}
+                    >
+                      <Icon name={badge.icon} size={13} color={badge.color} />
+                    </View>
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <Text style={{ fontSize: 12.5, color: theme.ink }} numberOfLines={1}>
+                        {base}
+                      </Text>
+                      {dir ? (
+                        <Text style={{ fontSize: 10.5, color: theme.faint, marginTop: 1 }} numberOfLines={1}>
+                          {dir}
+                        </Text>
+                      ) : null}
+                    </View>
+                  </Pressable>
+                );
+              })}
             </ScrollView>
           </View>
         ) : null}
