@@ -54,19 +54,22 @@ export function InlineText({ text, theme, onFilePress }: { text: string; theme: 
       {parts.map((p, i) => {
         if (p.startsWith("`") && p.endsWith("`") && p.length > 2) {
           const code = p.slice(1, -1);
-          if (onFilePress && looksLikeFilePath(code)) {
-            return (
-              <Text
-                key={i}
-                style={[mono, { fontSize: 12.5, color: theme.acc, textDecorationLine: "underline" }]}
-                onPress={() => onFilePress(code)}
-              >
-                {code}
-              </Text>
-            );
-          }
+          const isPath = onFilePress && looksLikeFilePath(code);
           return (
-            <Text key={i} style={[mono, { fontSize: 12.5, color: theme.muted }]}>
+            <Text
+              key={i}
+              style={[
+                mono,
+                s.codeChip,
+                {
+                  fontSize: 12.5,
+                  color: isPath ? theme.acc : theme.ink,
+                  backgroundColor: theme.l2,
+                  textDecorationLine: isPath ? "underline" : "none",
+                },
+              ]}
+              onPress={isPath ? () => onFilePress!(code) : undefined}
+            >
               {code}
             </Text>
           );
@@ -278,6 +281,7 @@ export function Markdown({ text, theme, onFilePress }: { text: string; theme: Th
 }
 
 const s = StyleSheet.create({
+  codeChip: { borderRadius: 4, paddingHorizontal: 5, paddingVertical: 1, overflow: "hidden" },
   code: { borderWidth: 1, borderRadius: 9, overflow: "hidden" },
   codeHead: {
     flexDirection: "row",

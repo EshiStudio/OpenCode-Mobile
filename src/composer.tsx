@@ -38,6 +38,20 @@ export const SLASH_COMMANDS: { id: SlashCommandId; icon: IconName }[] = [
   { id: "help", icon: "info" },
 ];
 
+/** Colors each `@mention` in the draft so a picked file reads as a mention, not plain text. */
+function renderMentionText(text: string, theme: Theme) {
+  const parts = text.split(/(@\S+)/g);
+  return parts.map((p, i) =>
+    p.startsWith("@") && p.length > 1 ? (
+      <Text key={i} style={{ color: theme.acc }}>
+        {p}
+      </Text>
+    ) : (
+      <Text key={i}>{p}</Text>
+    ),
+  );
+}
+
 /** Finds an active `@file` or `/command` trigger ending right at the cursor. */
 function detectTrigger(
   text: string,
@@ -234,26 +248,27 @@ export function Composer({
         ) : null}
 
         <View style={[s.box, { borderColor: theme.bd, backgroundColor: theme.bg }]}>
-          <TextInput
-            ref={inputRef}
-            multiline
-            value={value}
-            onChangeText={onChange}
-            onSelectionChange={(e) => setSelection(e.nativeEvent.selection)}
-            placeholder={t("composer.placeholder")}
-            placeholderTextColor={theme.faint}
-            style={{
-              fontSize: 14,
-              lineHeight: 20,
-              color: theme.ink,
-              paddingHorizontal: 13,
-              paddingTop: 11,
-              paddingBottom: 6,
-              minHeight: INPUT_MIN_HEIGHT,
-              maxHeight: 140,
-              textAlignVertical: "top",
-            }}
-          />
+          <View style={{ position: "relative" }}>
+            {/* Draws the actual glyphs — the TextInput below only handles
+                input/cursor/selection and keeps its own text invisible, so
+                an `@mention` can be colored mid-sentence. Same font metrics
+                and padding on both is what keeps them lined up; long drafts
+                that scroll the TextInput internally can drift out of sync
+                with this static overlay, a known limit of the technique. */}
+            <Text pointerEvents="none" style={[s.inputOverlay, s.inputOverlayAbs, { color: theme.ink }]}>
+              {value ? renderMentionText(value, theme) : " "}
+            </Text>
+            <TextInput
+              ref={inputRef}
+              multiline
+              value={value}
+              onChangeText={onChange}
+              onSelectionChange={(e) => setSelection(e.nativeEvent.selection)}
+              placeholder={t("composer.placeholder")}
+              placeholderTextColor={theme.faint}
+              style={[s.inputOverlay, { color: "transparent" }]}
+            />
+          </View>
           <View style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 9, paddingBottom: 8, gap: 6 }}>
             <Pressable onPress={onAttach} style={({ pressed }) => [s.iconBtn, { backgroundColor: pressed ? theme.l2 : "transparent" }]}>
               <Icon name="plus" size={13} color={theme.muted} />
@@ -356,6 +371,23 @@ function AttachChip({ theme, att, onRemove }: { theme: Theme; att: Attachment; o
 }
 
 const s = StyleSheet.create({
+  inputOverlay: {
+    fontSize: 14,
+    lineHeight: 20,
+    paddingHorizontal: 13,
+    paddingTop: 11,
+    paddingBottom: 6,
+    minHeight: INPUT_MIN_HEIGHT,
+    maxHeight: 140,
+    textAlignVertical: "top",
+  },
+  inputOverlayAbs: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+  },
   suggest: {
     borderWidth: 1,
     borderRadius: 9,
