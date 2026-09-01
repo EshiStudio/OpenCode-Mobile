@@ -181,6 +181,66 @@ export async function downloadToDevice(url: string, name?: string): Promise<Save
   return exportToDevice(file, name);
 }
 
+/** Writes text into the app cache under a given filename, for exporting or handing off content that only ever existed in memory (a file read from a server, a cloud drive, or another device's disk). */
+async function writeTextToCache(content: string, name: string): Promise<File> {
+  const box = new Directory(Paths.cache, "text-exports");
+  if (!box.exists) box.create({ intermediates: true });
+  const dest = new File(box, sanitize(name));
+  if (dest.exists) dest.delete();
+  dest.create({ intermediates: true } as never);
+  dest.write(content);
+  return dest;
+}
+
+/** The tap-to-view file's "Save to device" action: no local File to hand off, only text already read into memory. */
+export async function saveTextToDevice(content: string, name: string): Promise<SaveResult> {
+  let file: File;
+  try {
+    file = await writeTextToCache(content, name);
+  } catch (e) {
+    return { saved: false, reason: e instanceof Error ? e.message : t("media.saveFailed") };
+  }
+  return exportToDevice(file, name);
+}
+
+const MIME_BY_EXT: Record<string, string> = {
+  md: "text/markdown",
+  mdx: "text/markdown",
+  json: "application/json",
+  html: "text/html",
+  htm: "text/html",
+  xml: "application/xml",
+  csv: "text/csv",
+  pdf: "application/pdf",
+};
+
+/** The tap-to-view file's "Open in another app" action: writes the in-memory text out, then hands the OS a content:// URI to route to whatever app claims its type. */
+export async function openTextExternally(content: string, name: string): Promise<{ opened: boolean; reason?: string }> {
+  let file: File;
+  try {
+    file = await writeTextToCache(content, name);
+  } catch (e) {
+    return { opened: false, reason: e instanceof Error ? e.message : t("media.saveFailed") };
+  }
+  try {
+    const [{ getContentUriAsync }, IntentLauncher] = await Promise.all([
+      import("expo-file-system/legacy"),
+      import("expo-intent-launcher"),
+    ]);
+    const contentUri = await getContentUriAsync(file.uri);
+    const ext = name.split(".").pop()?.toLowerCase() || "";
+    await IntentLauncher.startActivityAsync("android.intent.action.VIEW", {
+      data: contentUri,
+      // FLAG_GRANT_READ_URI_PERMISSION | FLAG_ACTIVITY_NEW_TASK
+      flags: 1 | 268435456,
+      type: MIME_BY_EXT[ext] || "text/plain",
+    });
+    return { opened: true };
+  } catch (e) {
+    return { opened: false, reason: e instanceof Error ? e.message : t("media.openFailed") };
+  }
+}
+
 export function humanSize(bytes: number): string {
   if (!bytes) return "";
   if (bytes < 1024) return t("size.b", { n: bytes });

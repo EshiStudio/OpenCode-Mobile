@@ -14,9 +14,10 @@ import {
   View,
 } from "react-native";
 import * as Clipboard from "expo-clipboard";
-import { fileBadge, Icon } from "./icons";
+import { fileBadge, Icon, IconName } from "./icons";
 import { Attachment, useStore } from "./store";
-import { imageDataUrl, isTextual, keepLocally, pickMedia, textPreview } from "./media";
+import { imageDataUrl, isTextual, keepLocally, openTextExternally, pickMedia, saveTextToDevice, textPreview } from "./media";
+import { Markdown } from "./markdown";
 import { Theme } from "./theme";
 import { sessionTitle, variantName } from "./store";
 import { MessageView, PendingShim } from "./message";
@@ -90,6 +91,10 @@ export function ChatScreen({
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [draft, setDraft] = useState("");
   const [fileViewer, setFileViewer] = useState<{ path: string; content: string; loading: boolean; error?: string } | null>(null);
+  const [fileMenuOpen, setFileMenuOpen] = useState(false);
+  const [fileWrap, setFileWrap] = useState(false);
+  const [fileSearchOpen, setFileSearchOpen] = useState(false);
+  const [fileSearchQuery, setFileSearchQuery] = useState("");
   const listRef = useRef<FlatList<StoredMessage>>(null);
   // Whether the list is scrolled (near) the bottom. Auto-scroll on new
   // content only applies while true, so reading back through history during
@@ -621,38 +626,183 @@ export function ChatScreen({
       ) : null}
 
       {/* tapped file path preview */}
-      {fileViewer ? (
-        <View style={[StyleSheet.absoluteFill, { zIndex: 46, backgroundColor: theme.bg }]}>
-          <View style={[styles.fileViewerHead, { borderBottomColor: theme.bdSoft }]}>
-            <Text style={[mono, { flex: 1, fontSize: 12.5, color: theme.ink }]} numberOfLines={1}>
-              {fileViewer.path}
-            </Text>
-            {!fileViewer.loading && !fileViewer.error ? (
-              <Pressable onPress={() => Clipboard.setStringAsync(fileViewer.content)} hitSlop={8} style={{ padding: 6 }}>
-                <Icon name="copy" size={15} color={theme.muted} />
+      {fileViewer ? (() => {
+        const fname = fileViewer.path.split("/").pop() || fileViewer.path;
+        const fdir = fileViewer.path.slice(0, fileViewer.path.length - fname.length).replace(/\/+$/, "");
+        const badge = fileBadge(fileViewer.path);
+        const isMd = /\.(md|mdx)$/i.test(fileViewer.path);
+        const ready = !fileViewer.loading && !fileViewer.error;
+        const lines = ready ? fileViewer.content.split(/\r?\n/) : [];
+        const needle = fileSearchQuery.trim().toLowerCase();
+        const matchCount = needle ? lines.filter((l) => l.toLowerCase().includes(needle)).length : 0;
+
+        const renderLine = (line: string, i: number) => {
+          const matched = !!needle && line.toLowerCase().includes(needle);
+          return (
+            <View
+              key={i}
+              style={[styles.fileLine, matched ? { backgroundColor: "rgba(255,196,0,0.18)" } : null]}
+            >
+              <Text style={[mono, { width: 30, fontSize: 12, color: theme.faint, opacity: 0.6, textAlign: "right", marginRight: 12 }]}>
+                {i + 1}
+              </Text>
+              <Text
+                style={[mono, { fontSize: 12.5, lineHeight: 18, color: theme.ink, flexShrink: fileWrap ? 1 : 0 }]}
+                numberOfLines={fileWrap ? undefined : 1}
+              >
+                {line}
+              </Text>
+            </View>
+          );
+        };
+
+        return (
+          <View style={[StyleSheet.absoluteFill, { zIndex: 46, backgroundColor: theme.bg }]}>
+            <View style={[styles.fileViewerHead, { borderBottomColor: theme.bdSoft }]}>
+              <Pressable onPress={() => setFileViewer(null)} hitSlop={8} style={styles.fileViewerIconBtn}>
+                <Icon name="close" size={16} color={theme.muted} />
               </Pressable>
+              <View style={[styles.filePill, { backgroundColor: theme.l2 }]}>
+                <Icon name={badge.icon} size={15} color={badge.color} />
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={{ fontSize: 13, fontWeight: "600", color: theme.ink }} numberOfLines={1}>
+                    {fname}
+                  </Text>
+                  {fdir ? (
+                    <Text style={{ fontSize: 10.5, color: theme.faint }} numberOfLines={1}>
+                      {fdir}
+                    </Text>
+                  ) : null}
+                </View>
+              </View>
+              {ready ? (
+                <Pressable onPress={() => setFileMenuOpen(true)} hitSlop={8} style={styles.fileViewerIconBtn}>
+                  <Icon name="dots" size={16} color={theme.muted} />
+                </Pressable>
+              ) : (
+                <View style={{ width: 34 }} />
+              )}
+            </View>
+
+            {fileSearchOpen ? (
+              <View style={[styles.fileSearchBar, { borderBottomColor: theme.bdSoft }]}>
+                <Icon name="magnifying-glass" size={14} color={theme.faint} />
+                <TextInput
+                  autoFocus
+                  value={fileSearchQuery}
+                  onChangeText={setFileSearchQuery}
+                  placeholder={t("chat.fileSearchPlaceholder")}
+                  placeholderTextColor={theme.faint}
+                  style={{ flex: 1, color: theme.ink, fontSize: 13, marginLeft: 8 }}
+                />
+                {needle ? (
+                  <Text style={{ fontSize: 11.5, color: theme.faint, marginRight: 6 }}>
+                    {t("chat.fileMenuMatches", { n: matchCount })}
+                  </Text>
+                ) : null}
+                <Pressable
+                  onPress={() => {
+                    setFileSearchOpen(false);
+                    setFileSearchQuery("");
+                  }}
+                  hitSlop={8}
+                >
+                  <Icon name="close" size={14} color={theme.muted} />
+                </Pressable>
+              </View>
             ) : null}
-            <Pressable onPress={() => setFileViewer(null)} hitSlop={8} style={{ padding: 6 }}>
-              <Icon name="close" size={16} color={theme.muted} />
-            </Pressable>
-          </View>
-          {fileViewer.loading ? (
-            <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
-              <ActivityIndicator color={theme.muted} />
-            </View>
-          ) : fileViewer.error ? (
-            <View style={{ flex: 1, alignItems: "center", justifyContent: "center", padding: 24 }}>
-              <Text style={{ color: theme.muted, fontSize: 13, textAlign: "center" }}>{fileViewer.error}</Text>
-            </View>
-          ) : (
-            <ScrollView contentContainerStyle={{ padding: 14 }}>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                <Text style={[mono, { fontSize: 12.5, lineHeight: 18, color: theme.ink }]}>{fileViewer.content}</Text>
+
+            {fileViewer.loading ? (
+              <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
+                <ActivityIndicator color={theme.muted} />
+              </View>
+            ) : fileViewer.error ? (
+              <View style={{ flex: 1, alignItems: "center", justifyContent: "center", padding: 24 }}>
+                <Text style={{ color: theme.muted, fontSize: 13, textAlign: "center" }}>{fileViewer.error}</Text>
+              </View>
+            ) : isMd ? (
+              <ScrollView contentContainerStyle={{ padding: 16 }}>
+                <Markdown text={fileViewer.content} theme={theme} />
               </ScrollView>
-            </ScrollView>
-          )}
-        </View>
-      ) : null}
+            ) : fileWrap ? (
+              <ScrollView contentContainerStyle={{ paddingVertical: 12 }}>
+                {lines.map((line, i) => renderLine(line, i))}
+              </ScrollView>
+            ) : (
+              <ScrollView contentContainerStyle={{ paddingVertical: 12 }}>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                  <View>{lines.map((line, i) => renderLine(line, i))}</View>
+                </ScrollView>
+              </ScrollView>
+            )}
+
+            <BottomSheet theme={theme} open={fileMenuOpen} onClose={() => setFileMenuOpen(false)}>
+              <View style={{ paddingBottom: 8 }}>
+                <View style={styles.fileMenuTitleRow}>
+                  <Text style={{ flex: 1, fontSize: 15, fontWeight: "700", color: theme.ink }} numberOfLines={1}>
+                    {fname}
+                  </Text>
+                  <View style={[styles.langPill, { backgroundColor: theme.l2 }]}>
+                    <Text style={{ fontSize: 11, fontWeight: "600", color: theme.faint }}>
+                      {(fname.split(".").pop() || "").toUpperCase()}
+                    </Text>
+                  </View>
+                </View>
+                {!isMd ? (
+                  <>
+                    <MenuRow
+                      theme={theme}
+                      icon="magnifying-glass"
+                      label={t("chat.fileMenu.search")}
+                      onPress={() => {
+                        setFileMenuOpen(false);
+                        setFileSearchOpen(true);
+                      }}
+                    />
+                    <MenuRow
+                      theme={theme}
+                      icon="code-lines"
+                      label={t("chat.fileMenu.wrap")}
+                      trailing={fileWrap ? t("common.on") : t("common.off")}
+                      trailingAccent={fileWrap}
+                      onPress={() => setFileWrap((w) => !w)}
+                    />
+                  </>
+                ) : null}
+                <MenuRow
+                  theme={theme}
+                  icon="copy"
+                  label={t("chat.fileMenu.copy")}
+                  onPress={() => {
+                    Clipboard.setStringAsync(fileViewer.content);
+                    setFileMenuOpen(false);
+                  }}
+                />
+                <MenuRow
+                  theme={theme}
+                  icon="download"
+                  label={t("chat.fileMenu.save")}
+                  onPress={async () => {
+                    setFileMenuOpen(false);
+                    const res = await saveTextToDevice(fileViewer.content, fname);
+                    if (!res.saved && res.reason) Alert.alert(t("chat.filePreviewFailed"), res.reason);
+                  }}
+                />
+                <MenuRow
+                  theme={theme}
+                  icon="open-file"
+                  label={t("chat.fileMenu.openExternal")}
+                  onPress={async () => {
+                    setFileMenuOpen(false);
+                    const res = await openTextExternally(fileViewer.content, fname);
+                    if (!res.opened && res.reason) Alert.alert(t("chat.filePreviewFailed"), res.reason);
+                  }}
+                />
+              </View>
+            </BottomSheet>
+          </View>
+        );
+      })() : null}
     </View>
   );
 
@@ -710,6 +860,10 @@ export function ChatScreen({
   }
 
   function openFilePath(path: string) {
+    setFileMenuOpen(false);
+    setFileWrap(false);
+    setFileSearchOpen(false);
+    setFileSearchQuery("");
     setFileViewer({ path, content: "", loading: true });
     store.readFile(path, projDir).then((res) => {
       if (!res) {
@@ -1013,6 +1167,36 @@ function FilePicker({
   );
 }
 
+/** One row in the file viewer's "…" menu: icon, label, and an optional trailing value (e.g. the wrap toggle's On/Off). */
+function MenuRow({
+  theme,
+  icon,
+  label,
+  trailing,
+  trailingAccent,
+  onPress,
+}: {
+  theme: Theme;
+  icon: IconName;
+  label: string;
+  trailing?: string;
+  trailingAccent?: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [styles.fileMenuRow, { backgroundColor: pressed ? theme.l2 : "transparent" }]}
+    >
+      <Icon name={icon} size={18} color={theme.muted} />
+      <Text style={{ flex: 1, fontSize: 14.5, color: theme.ink }}>{label}</Text>
+      {trailing ? (
+        <Text style={{ fontSize: 13, color: trailingAccent ? theme.acc : theme.muted }}>{trailing}</Text>
+      ) : null}
+    </Pressable>
+  );
+}
+
 function MoreRows({ theme, active, onRename, onDelete, onClose }: { theme: Theme; active: { id: string } | null; onRename: () => void; onDelete: () => void; onClose: () => void }) {
   const store = useStore();
   return (
@@ -1080,11 +1264,51 @@ const styles = StyleSheet.create({
   fileViewerHead: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 4,
-    paddingHorizontal: 12,
+    gap: 8,
+    paddingHorizontal: 9,
     paddingTop: 50,
     paddingBottom: 10,
     borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  fileViewerIconBtn: { width: 34, height: 34, alignItems: "center", justifyContent: "center" },
+  filePill: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    height: 40,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+  },
+  fileSearchBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 14,
+    height: 42,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  fileLine: {
+    flexDirection: "row",
+    paddingHorizontal: 14,
+  },
+  fileMenuTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingHorizontal: 18,
+    paddingBottom: 12,
+  },
+  langPill: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  fileMenuRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingHorizontal: 18,
+    paddingVertical: 12,
   },
   fileSearch: {
     flexDirection: "row",
