@@ -54,7 +54,16 @@ import { diskTools, downloadTools, fileTools, webTools, runTool, toolLabel } fro
 import { appTools, AppControl } from "./app-tools";
 import { t } from "./i18n";
 import { extractToken } from "./yandex";
-import { CloudId, CLOUD_IDS, cloudName, connect as cloudConnect, makeFolder as cloudMakeFolder } from "./clouds";
+import {
+  CloudId,
+  CLOUD_IDS,
+  cloudName,
+  connect as cloudConnect,
+  makeFolder as cloudMakeFolder,
+  listFolder as cloudListFolder,
+  downloadText as cloudDownloadText,
+} from "./clouds";
+import { isTextual } from "./media";
 import { Directory, File, Paths } from "expo-file-system";
 import { keepForHistory } from "./media";
 import { OAuthCloud, refresh as oauthRefresh, signIn, stale } from "./oauth";
@@ -248,6 +257,48 @@ function collectLocalFiles(dir: Directory, prefix: string, out: string[], limit:
     if (it instanceof Directory) collectLocalFiles(it, rel, out, limit, depth + 1);
     else out.push(rel);
   }
+}
+
+/**
+ * The cloud-drive counterpart of collectLocalFiles: a `listFolder` call per
+ * directory, so it's one network round trip per level rather than one big
+ * tree fetch — kept shallower and smaller than the on-device walk since it's
+ * network-bound.
+ */
+async function collectCloudFiles(
+  cloudId: CloudId,
+  token: string,
+  root: string | undefined,
+  rel: string,
+  prefix: string,
+  out: string[],
+  limit: number,
+  depth: number,
+): Promise<void> {
+  if (out.length >= limit || depth > 4) return;
+  let items: string[];
+  try {
+    items = await cloudListFolder(cloudId, token, rel, root);
+  } catch {
+    return;
+  }
+  for (const raw of items) {
+    if (out.length >= limit) return;
+    const isDir = raw.endsWith("/");
+    const nm = isDir ? raw.slice(0, -1) : raw;
+    if (!nm || nm.startsWith(".")) continue;
+    const relChild = rel ? `${rel}/${nm}` : nm;
+    const prefixChild = prefix ? `${prefix}/${nm}` : nm;
+    if (isDir) await collectCloudFiles(cloudId, token, root, relChild, prefixChild, out, limit, depth + 1);
+    else out.push(prefixChild);
+  }
+}
+
+/** The legacy Yandex field wins only when the newer per-cloud list hasn't attached one of its own. */
+function cloudCredential(s: { yandexToken: string; yandexRoot: string; cloudTokens: Record<string, string>; cloudRoots: Record<string, string> }, id: CloudId) {
+  const token = s.cloudTokens[id] || (id === "yandex" ? s.yandexToken : "");
+  const root = s.cloudRoots[id] || (id === "yandex" ? s.yandexRoot : "");
+  return { token, root };
 }
 
 export function StoreProvider({
@@ -1385,21 +1436,30 @@ export function StoreProvider({
         return [];
       }
     }
-    const active = stateRef.current.local.projects.find((p) => p.id === stateRef.current.local.activeProject);
-    if (!active || active.cloud) return [];
-    try {
-      const root = new Directory(active.path);
-      if (!root.exists) return [];
-      const all: string[] = [];
-      collectLocalFiles(root, "", all, 400, 0);
-      const needle = q.toLowerCase();
-      return all.filter((p) => p.toLowerCase().includes(needle)).slice(0, 30);
-    } catch {
-      return [];
+    const s = stateRef.current;
+    const active = s.local.projects.find((p) => p.id === s.local.activeProject);
+    if (!active) return [];
+    const needle = q.toLowerCase();
+    if (!active.cloud) {
+      try {
+        const root = new Directory(active.path);
+        if (!root.exists) return [];
+        const all: string[] = [];
+        collectLocalFiles(root, "", all, 400, 0);
+        return all.filter((p) => p.toLowerCase().includes(needle)).slice(0, 30);
+      } catch {
+        return [];
+      }
     }
+    const cloudId = active.cloud as CloudId;
+    const { token, root } = cloudCredential(s, cloudId);
+    if (!token) return [];
+    const all: string[] = [];
+    await collectCloudFiles(cloudId, token, root, active.path, "", all, 200, 0);
+    return all.filter((p) => p.toLowerCase().includes(needle)).slice(0, 30);
   }, []);
 
-  /** Reads a file for the tap-to-view path in a reply: the server if connected, else the active on-device project. */
+  /** Reads a file for the tap-to-view path in a reply: the server if connected, else the active local or cloud project. */
   const readFile = useCallback(async (path: string, directory?: string) => {
     if (stateRef.current.connected && apiRef.current) {
       try {
@@ -1408,14 +1468,28 @@ export function StoreProvider({
         return null;
       }
     }
-    const active = stateRef.current.local.projects.find((p) => p.id === stateRef.current.local.activeProject);
-    if (!active || active.cloud) return null;
+    const s = stateRef.current;
+    const active = s.local.projects.find((p) => p.id === s.local.activeProject);
+    if (!active) return null;
+    if (!isTextual(path)) return { type: "binary" as const, content: "" };
+    if (!active.cloud) {
+      try {
+        const segments = path.replace(/\\/g, "/").split("/").filter((x) => x && x !== ".");
+        if (segments.some((x) => x === "..")) return null;
+        const file = new File(active.path, ...segments);
+        if (!file.exists) return null;
+        const text = await file.text();
+        return { type: "text" as const, content: text };
+      } catch {
+        return null;
+      }
+    }
+    const cloudId = active.cloud as CloudId;
+    const { token, root } = cloudCredential(s, cloudId);
+    if (!token) return null;
     try {
-      const segments = path.replace(/\\/g, "/").split("/").filter((s) => s && s !== ".");
-      if (segments.some((s) => s === "..")) return null;
-      const file = new File(active.path, ...segments);
-      if (!file.exists) return null;
-      const text = await file.text();
+      const rel = `${active.path}/${path.replace(/^\/+/, "")}`;
+      const text = await cloudDownloadText(cloudId, token, rel, root);
       return { type: "text" as const, content: text };
     } catch {
       return null;
