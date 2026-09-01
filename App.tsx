@@ -652,6 +652,32 @@ function ScanStep({
   const rescan = () => setAttempt((n) => n + 1);
   const scanning = phase === "checking" || phase === "scanning";
 
+  // While the sweep runs there is nothing to read and nothing to decide, so
+  // the screen is only the ring, what it is doing, and the way out — as drawn.
+  // The heading, the blurb and the command line belong to the state where they
+  // can be acted on; leaving them up during the scan pushed the ring off centre
+  // and gave a busy screen where the design has a calm one.
+  if (scanning) {
+    return (
+      <View style={[styles.connect, { backgroundColor: theme.bg }]}>
+        <View style={{ width: "100%", maxWidth: 460, alignItems: "center", gap: 18 }}>
+          <GreenSpinner theme={theme} size={96} />
+          <Text style={{ color: theme.muted, fontSize: 13 }}>
+            {phase === "scanning" && progress.total
+              ? `${t("app.scan.scanning")} ${progress.done}/${progress.total}`
+              : t("app.scan.scanning")}
+          </Text>
+          <Pressable
+            onPress={onCancel}
+            style={{ paddingHorizontal: 18, paddingVertical: 10, borderRadius: 8, backgroundColor: theme.l2, borderWidth: 1, borderColor: theme.bd }}
+          >
+            <Text style={{ color: theme.ink, fontSize: 13.5 }}>{t("common.cancel")}</Text>
+          </Pressable>
+        </View>
+      </View>
+    );
+  }
+
   return (
     <View style={[styles.connect, { backgroundColor: theme.bg }]}>
       <View style={{ width: "100%", maxWidth: 460, gap: 14 }}>
@@ -660,23 +686,6 @@ function ScanStep({
         <Text style={{ fontFamily: "monospace", fontSize: 11.5, color: theme.muted, backgroundColor: theme.l1, padding: 10, borderRadius: 7 }}>
           opencode serve --hostname 0.0.0.0 --port 41111
         </Text>
-
-        {scanning && (
-          <View style={{ alignItems: "center", gap: 14, paddingVertical: 18 }}>
-            <GreenSpinner theme={theme} />
-            <Text style={{ color: theme.muted, fontSize: 13 }}>
-              {phase === "scanning" && progress.total
-                ? `${t("app.scan.scanning")} ${progress.done}/${progress.total}`
-                : t("app.scan.scanning")}
-            </Text>
-            <Pressable
-              onPress={onCancel}
-              style={{ paddingHorizontal: 18, paddingVertical: 10, borderRadius: 8, backgroundColor: theme.l2, borderWidth: 1, borderColor: theme.bd }}
-            >
-              <Text style={{ color: theme.ink, fontSize: 13.5 }}>{t("common.cancel")}</Text>
-            </Pressable>
-          </View>
-        )}
 
         {phase === "no-wifi" && <Text style={{ fontSize: 13, color: theme.err, lineHeight: 19 }}>{t("app.scan.needsWifi")}</Text>}
 
@@ -720,23 +729,19 @@ function ScanStep({
           </Pressable>
         )}
 
-        {!scanning && (
-          <>
-            <Pressable onPress={onManual} style={{ alignItems: "center", paddingVertical: 8 }}>
-              <Text style={{ color: theme.faint, fontSize: 13 }}>{t("app.scan.manual")}</Text>
-            </Pressable>
+        <Pressable onPress={onManual} style={{ alignItems: "center", paddingVertical: 8 }}>
+          <Text style={{ color: theme.faint, fontSize: 13 }}>{t("app.scan.manual")}</Text>
+        </Pressable>
 
-            <Pressable onPress={onCancel} style={{ alignItems: "center", paddingVertical: 4 }}>
-              <Text style={{ color: theme.muted, fontSize: 13.5 }}>{t("common.cancel")}</Text>
-            </Pressable>
+        <Pressable onPress={onCancel} style={{ alignItems: "center", paddingVertical: 4 }}>
+          <Text style={{ color: theme.muted, fontSize: 13.5 }}>{t("common.cancel")}</Text>
+        </Pressable>
 
-            <Pressable onPress={() => setDark(!dark)} style={{ marginTop: 2, alignItems: "center" }}>
-              <Text style={{ color: theme.faint, fontSize: 13 }}>
-                {t("app.theme.toggle", { name: t(dark ? "app.theme.dark" : "app.theme.light") })}
-              </Text>
-            </Pressable>
-          </>
-        )}
+        <Pressable onPress={() => setDark(!dark)} style={{ marginTop: 2, alignItems: "center" }}>
+          <Text style={{ color: theme.faint, fontSize: 13 }}>
+            {t("app.theme.toggle", { name: t(dark ? "app.theme.dark" : "app.theme.light") })}
+          </Text>
+        </Pressable>
       </View>
     </View>
   );
