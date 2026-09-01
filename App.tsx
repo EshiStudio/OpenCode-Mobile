@@ -226,8 +226,6 @@ export default function App() {
             <View style={[StyleSheet.absoluteFill, { backgroundColor: theme.bg, zIndex: 60 }]}>
               <ConnectScreen
                 theme={theme}
-                dark={dark}
-                setDark={setThemeDark}
                 onCancel={() => setConnectOpen(false)}
                 onConnected={(c) => {
                   setConn(c);
@@ -369,12 +367,8 @@ function ConnectScreen({
   theme,
   onConnected,
   onCancel,
-  dark,
-  setDark,
 }: {
   theme: ReturnType<typeof makeTheme>;
-  dark: boolean;
-  setDark: (d: boolean) => void;
   onConnected: (c: Connection) => void;
   /** The screen is reached from Settings now, so it has to be leaveable. */
   onCancel: () => void;
@@ -492,8 +486,6 @@ function ConnectScreen({
     return (
       <ScanStep
         theme={theme}
-        dark={dark}
-        setDark={setDark}
         onCancel={onCancel}
         onPick={(server) => {
           // The code only means anything to the pairing proxy, not to
@@ -582,14 +574,6 @@ function ConnectScreen({
           <Pressable onPress={onCancel} style={{ alignItems: "center", paddingVertical: 8 }}>
             <Text style={{ color: theme.muted, fontSize: 13.5 }}>{t("common.cancel")}</Text>
           </Pressable>
-
-          {pickedFromList ? null : (
-            <Pressable onPress={() => setDark(!dark)} style={{ marginTop: 6, alignItems: "center" }}>
-              <Text style={{ color: theme.faint, fontSize: 13 }}>
-                {t("app.theme.toggle", { name: t(dark ? "app.theme.dark" : "app.theme.light") })}
-              </Text>
-            </Pressable>
-          )}
         </View>
       </View>
     </KeyboardAvoidingView>
@@ -605,15 +589,11 @@ function ConnectScreen({
  */
 function ScanStep({
   theme,
-  dark,
-  setDark,
   onCancel,
   onPick,
   onManual,
 }: {
   theme: ReturnType<typeof makeTheme>;
-  dark: boolean;
-  setDark: (d: boolean) => void;
   onCancel: () => void;
   onPick: (server: FoundServer) => void;
   onManual: () => void;
@@ -729,18 +709,20 @@ function ScanStep({
           </Pressable>
         )}
 
-        <Pressable onPress={onManual} style={{ alignItems: "center", paddingVertical: 8 }}>
-          <Text style={{ color: theme.faint, fontSize: 13 }}>{t("app.scan.manual")}</Text>
-        </Pressable>
+        {/* The drawn screen ends at "scan again" and "cancel" — a computer was
+            found and the only thing left is to pick one. Typing an address by
+            hand is what is left when the sweep comes back with nothing (a
+            different subnet, a wired machine), a state the design doesn't
+            cover, so it appears only there rather than sitting under a list
+            that already has the answer. */}
+        {phase !== "done" || found.length === 0 ? (
+          <Pressable onPress={onManual} style={{ alignItems: "center", paddingVertical: 8 }}>
+            <Text style={{ color: theme.faint, fontSize: 13 }}>{t("app.scan.manual")}</Text>
+          </Pressable>
+        ) : null}
 
         <Pressable onPress={onCancel} style={{ alignItems: "center", paddingVertical: 4 }}>
           <Text style={{ color: theme.muted, fontSize: 13.5 }}>{t("common.cancel")}</Text>
-        </Pressable>
-
-        <Pressable onPress={() => setDark(!dark)} style={{ marginTop: 2, alignItems: "center" }}>
-          <Text style={{ color: theme.faint, fontSize: 13 }}>
-            {t("app.theme.toggle", { name: t(dark ? "app.theme.dark" : "app.theme.light") })}
-          </Text>
         </Pressable>
       </View>
     </View>
