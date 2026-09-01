@@ -106,6 +106,8 @@ export type Attachment = {
   uri?: string;
   mime?: string;
   size?: number;
+  /** Added by picking a file from the composer's `@` list — the mention text already names it inline, so the composer skips the redundant chip for these. */
+  viaMention?: boolean;
 };
 
 export type StoreState = {

@@ -337,7 +337,7 @@ export function ChatScreen({
         onPickBranch={() => setSheet("branch")}
         onRemoveAttach={(i) => store.removeAttachment(i)}
         onFilesQuery={store.findFiles}
-        onPickFile={(path) => setAttachAtlas({ name: baseName(path) || path, path })}
+        onPickFile={(path) => store.addAttachments([{ kind: "file", name: baseName(path) || path, path, viaMention: true }])}
         onCommand={handleComposerCommand}
       />
 
