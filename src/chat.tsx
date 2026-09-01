@@ -331,7 +331,7 @@ export function ChatScreen({
         onPickProject={() => setSheet("project")}
         onPickBranch={() => setSheet("branch")}
         onRemoveAttach={(i) => store.removeAttachment(i)}
-        onFilesQuery={localMode ? undefined : store.findFiles}
+        onFilesQuery={store.findFiles}
         onPickFile={(path) => setAttachAtlas({ name: baseName(path) || path, path })}
         onCommand={handleComposerCommand}
       />

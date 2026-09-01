@@ -227,6 +227,29 @@ function folderName(name: string): string {
     .slice(0, 60);
 }
 
+/**
+ * Walks a device project's folder for the `@` picker. Stops well short of a
+ * huge tree (node_modules, build output) — this only needs to offer a
+ * plausible file, not enumerate everything.
+ */
+function collectLocalFiles(dir: Directory, prefix: string, out: string[], limit: number, depth: number): void {
+  if (out.length >= limit || depth > 8) return;
+  let items: ReturnType<Directory["list"]>;
+  try {
+    items = dir.list();
+  } catch {
+    return;
+  }
+  for (const it of items) {
+    if (out.length >= limit) return;
+    const nm = it.name || it.uri.replace(/\/$/, "").split("/").pop() || "";
+    if (!nm || nm.startsWith(".") || nm === "node_modules") continue;
+    const rel = prefix ? `${prefix}/${nm}` : nm;
+    if (it instanceof Directory) collectLocalFiles(it, rel, out, limit, depth + 1);
+    else out.push(rel);
+  }
+}
+
 export function StoreProvider({
   children,
   conn,
@@ -1341,10 +1364,29 @@ export function StoreProvider({
     setState((s) => ({ ...s, attachments: [] }));
   }, []);
 
+  /**
+   * Files for the `@` picker and the attach-project-file sheet. Connected to
+   * a server, this asks it; otherwise it's the active on-device project's own
+   * folder — a project held in a cloud drive isn't covered here, that would
+   * mean walking a whole cloud API tree just to populate an autocomplete.
+   */
   const findFiles = useCallback(async (q: string) => {
-    if (!apiRef.current) return [];
+    if (stateRef.current.connected && apiRef.current) {
+      try {
+        return await apiRef.current.findFiles(q);
+      } catch {
+        return [];
+      }
+    }
+    const active = stateRef.current.local.projects.find((p) => p.id === stateRef.current.local.activeProject);
+    if (!active || active.cloud) return [];
     try {
-      return await apiRef.current.findFiles(q);
+      const root = new Directory(active.path);
+      if (!root.exists) return [];
+      const all: string[] = [];
+      collectLocalFiles(root, "", all, 400, 0);
+      const needle = q.toLowerCase();
+      return all.filter((p) => p.toLowerCase().includes(needle)).slice(0, 30);
     } catch {
       return [];
     }
