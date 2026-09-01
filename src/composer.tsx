@@ -334,12 +334,13 @@ export function Composer({
 /** An attached file: photos show themselves, everything else shows a name and size. */
 function AttachChip({ theme, att, onRemove }: { theme: Theme; att: Attachment; onRemove: () => void }) {
   const image = att.kind === "image" && att.uri;
+  const badge = fileBadge(att.name);
   return (
     <View style={[s.att, { borderColor: theme.bdSoft, backgroundColor: theme.l1 }]}>
       {image ? (
         <Image source={{ uri: att.uri }} style={{ width: 26, height: 26, borderRadius: 5 }} />
       ) : (
-        <Icon name={att.kind === "link" ? "link" : "open-file"} size={14} color={theme.muted} />
+        <Icon name={att.kind === "link" ? "link" : badge.icon} size={14} color={att.kind === "link" ? theme.muted : badge.color} />
       )}
       <View style={{ maxWidth: 150 }}>
         <Text style={{ fontSize: 11.5, color: theme.ink }} numberOfLines={1}>

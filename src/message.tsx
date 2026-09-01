@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import * as Clipboard from "expo-clipboard";
 import { t } from "./i18n";
 import { Animated, Image, Pressable, StyleSheet, Text, View } from "react-native";
-import { Icon, IconName } from "./icons";
+import { fileBadge, Icon, IconName } from "./icons";
 import { mono } from "./ui";
 import { Theme } from "./theme";
 import { Part, StoredMessage } from "./types";
@@ -28,9 +28,10 @@ function Attachment({ theme, part }: { theme: Theme; part: Extract<Part, { type:
     );
   }
 
+  const badge = fileBadge(part.filename || part.url || "");
   return (
     <View style={s.attRow}>
-      <Icon name={isImage ? "photo" : "open-file"} size={14} color={theme.muted} />
+      <Icon name={isImage ? "photo" : badge.icon} size={14} color={isImage ? theme.muted : badge.color} />
       <Text style={[mono, { fontSize: 11.5, color: theme.muted, flex: 1 }]} numberOfLines={1}>
         {part.filename || part.url}
       </Text>
