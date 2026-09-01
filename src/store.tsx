@@ -233,6 +233,9 @@ export function useStore(): StoreState {
 /** Everything a project creates lives under one folder, device or cloud alike. */
 const PROJECT_DIR = "opencode-projects";
 
+/** How long a cloud project's file listing is reused before walking it again. */
+const CLOUD_FILES_TTL = 60_000;
+
 /** Folder names have to survive both a filesystem and three cloud APIs. */
 function folderName(name: string): string {
   return name
@@ -369,6 +372,11 @@ export function StoreProvider({
   const subRef = useRef<AbortController | null>(null);
   const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hydratedCacheRef = useRef(false);
+  /** Per-project cloud file listings for the `@` picker, plus the walks currently in flight. */
+  const cloudFilesRef = useRef({
+    done: {} as Record<string, { at: number; files: string[] }>,
+    pending: {} as Record<string, Promise<string[]>>,
+  });
   const saveCacheTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const knownRef = useRef({ messages: {} as Record<string, Record<string, StoredMessage>>, order: {} as Record<string, string[]> });
 
@@ -1525,18 +1533,43 @@ export function StoreProvider({
     const cloudId = active.cloud as CloudId;
     const { token, root } = cloudCredential(s, cloudId);
     if (!token) return [];
-    const all: string[] = [];
-    try {
-      await collectCloudFiles(cloudId, token, root, active.path, "", all, 200, 0);
-    } catch (e) {
-      // Otherwise this fails silently forever — measured live: an @ picker
-      // that never shows anything looks identical to "no files match",
-      // there was no way to tell a dead token or a network hiccup from a
-      // genuinely empty project.
-      setState((st) => ({ ...st, error: e instanceof Error ? e.message : t("store.cloudSearchFailed") }));
-      return [];
+
+    // Walking a cloud project costs one HTTP request per folder, so doing it
+    // per keystroke made the @ picker feel dead on a phone: several seconds
+    // of nothing for the first character, then the whole walk again for the
+    // second. The listing is fetched once per project and filtered locally
+    // after that; a walk already in flight is shared rather than started
+    // twice, which is what typing quickly used to do.
+    const cacheKey = `${cloudId}:${active.path}`;
+    const cached = cloudFilesRef.current.done[cacheKey];
+    let files: string[];
+    if (cached && Date.now() - cached.at < CLOUD_FILES_TTL) {
+      files = cached.files;
+    } else {
+      let pending = cloudFilesRef.current.pending[cacheKey];
+      if (!pending) {
+        pending = (async () => {
+          const all: string[] = [];
+          await collectCloudFiles(cloudId, token, root, active.path, "", all, 200, 0);
+          return all;
+        })();
+        cloudFilesRef.current.pending[cacheKey] = pending;
+      }
+      try {
+        files = await pending;
+        cloudFilesRef.current.done[cacheKey] = { at: Date.now(), files };
+      } catch (e) {
+        // Otherwise this fails silently forever — measured live: an @ picker
+        // that never shows anything looks identical to "no files match",
+        // there was no way to tell a dead token or a network hiccup from a
+        // genuinely empty project.
+        setState((st) => ({ ...st, error: e instanceof Error ? e.message : t("store.cloudSearchFailed") }));
+        return [];
+      } finally {
+        delete cloudFilesRef.current.pending[cacheKey];
+      }
     }
-    return all.filter((p) => p.toLowerCase().includes(needle)).slice(0, 30);
+    return files.filter((p) => p.toLowerCase().includes(needle)).slice(0, 30);
   }, []);
 
   /** Reads a file for the tap-to-view path in a reply: the server if connected, else the active local or cloud project. */

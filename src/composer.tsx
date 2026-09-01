@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { t } from "./i18n";
 import {
+  ActivityIndicator,
   Animated,
   Image,
   Pressable,
@@ -131,19 +132,37 @@ export function Composer({
   const insets = useSafeAreaInsets();
   const send = usePressScale(0.88);
 
-  const [selection, setSelection] = useState({ start: 0, end: 0 });
-  const trigger = useMemo(() => detectTrigger(value, selection.end), [value, selection.end]);
+  // The cursor arrives in its own event, *after* onChangeText — so right after
+  // a keystroke the selection still describes the previous text. Typing "@"
+  // into an empty field landed exactly there: value "@" with a stale cursor of
+  // 0, so detectTrigger looked at an empty string and found no trigger at all,
+  // and the picker never opened (typing more characters hid it, because by the
+  // second keystroke the cursor had caught up). Remembering which text a
+  // selection was reported for makes that detectable: when it is stale, the
+  // cursor is at the end of what was just typed.
+  const [selection, setSelection] = useState({ start: 0, end: 0, forValue: "" });
+  const cursor = selection.forValue === value ? selection.end : value.length;
+  const trigger = useMemo(() => detectTrigger(value, cursor), [value, cursor]);
   const [fileRows, setFileRows] = useState<string[]>([]);
+  const [searching, setSearching] = useState(false);
 
   useEffect(() => {
     if (!trigger || trigger.kind !== "@" || !onFilesQuery) {
       setFileRows([]);
+      setSearching(false);
       return;
     }
     let cancelled = false;
-    onFilesQuery(trigger.query || "").then((res) => {
-      if (!cancelled) setFileRows(res.slice(0, 8));
-    });
+    // A cloud project's first lookup goes over the network and can take a
+    // few seconds — without this the picker looked broken rather than busy.
+    setSearching(true);
+    onFilesQuery(trigger.query || "")
+      .then((res) => {
+        if (!cancelled) setFileRows(res.slice(0, 8));
+      })
+      .finally(() => {
+        if (!cancelled) setSearching(false);
+      });
     return () => {
       cancelled = true;
     };
@@ -181,7 +200,7 @@ export function Composer({
   function pickFile(path: string) {
     if (!trigger) return;
     const insertion = `@${path} `;
-    const next = value.slice(0, trigger.start) + insertion + value.slice(selection.end);
+    const next = value.slice(0, trigger.start) + insertion + value.slice(cursor);
     onChange(next);
     onPickFile?.(path);
   }
@@ -207,8 +226,14 @@ export function Composer({
           </ScrollView>
         ) : null}
 
-        {trigger && trigger.kind === "@" && fileRows.length > 0 ? (
+        {trigger && trigger.kind === "@" && (fileRows.length > 0 || searching) ? (
           <View style={[s.suggest, { borderColor: theme.bd, backgroundColor: theme.bg }]}>
+            {searching && fileRows.length === 0 ? (
+              <View style={[s.suggestRow, { gap: 10 }]}>
+                <ActivityIndicator size="small" color={theme.faint} />
+                <Text style={{ fontSize: 12.5, color: theme.faint }}>{t("composer.searchingFiles")}</Text>
+              </View>
+            ) : null}
             <ScrollView keyboardShouldPersistTaps="handled" style={{ maxHeight: 220 }}>
               {fileRows.map((f) => {
                 const base = f.split("/").pop() || f;
@@ -286,7 +311,7 @@ export function Composer({
               multiline
               value={value}
               onChangeText={onChange}
-              onSelectionChange={(e) => setSelection(e.nativeEvent.selection)}
+              onSelectionChange={(e) => setSelection({ ...e.nativeEvent.selection, forValue: value })}
               placeholder={t("composer.placeholder")}
               placeholderTextColor={theme.faint}
               style={[s.inputOverlay, { color: "transparent" }]}
