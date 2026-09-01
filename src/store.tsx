@@ -51,6 +51,9 @@ import {
   clearWatchTask,
   loadServerCache,
   saveServerCache,
+  loadCloudFiles,
+  saveCloudFiles,
+  CloudFileCache,
 } from "./storage";
 import { diskTools, downloadTools, fileTools, webTools, runTool, toolLabel } from "./tools";
 import { appTools, AppControl } from "./app-tools";
@@ -235,8 +238,23 @@ export function useStore(): StoreState {
 /** Everything a project creates lives under one folder, device or cloud alike. */
 const PROJECT_DIR = "opencode-projects";
 
-/** How long a cloud project's file listing is reused before walking it again. */
-const CLOUD_FILES_TTL = 60_000;
+/**
+ * How long a cloud project's file listing is trusted before it is walked
+ * again. The stale copy is still served while that runs, so this is the age at
+ * which a refresh starts, not the age at which results stop appearing.
+ */
+const CLOUD_FILES_TTL = 10 * 60_000;
+
+/** Folder listings requested at once while walking a cloud project. */
+const CLOUD_WALK_WIDTH = 8;
+
+/** How long a device project's file listing is reused. Short: local edits should show up. */
+const LOCAL_FILES_TTL = 15_000;
+
+/** Cache key for one project's listing — a project is a path on a particular drive. */
+function cloudKey(cloudId: CloudId, path: string): string {
+  return `${cloudId}:${path}`;
+}
 
 /** Folder names have to survive both a filesystem and three cloud APIs. */
 function folderName(name: string): string {
@@ -271,43 +289,67 @@ function collectLocalFiles(dir: Directory, prefix: string, out: string[], limit:
 }
 
 /**
- * The cloud-drive counterpart of collectLocalFiles: a `listFolder` call per
- * directory, so it's one network round trip per level rather than one big
- * tree fetch — kept shallower and smaller than the on-device walk since it's
- * network-bound.
+ * The cloud-drive counterpart of collectLocalFiles: one `listFolder` call per
+ * directory, since none of the three drives will hand over a whole tree at
+ * once.
+ *
+ * The walk goes level by level with several folders in flight at a time, not
+ * depth-first one at a time. Depth-first meant every folder waited out the
+ * request before it, so the wait was the *sum* of every round trip in the
+ * project — on a phone, with a mobile-network round trip of a few hundred
+ * milliseconds, a modest project took long enough that the picker read as
+ * broken. Level-by-level the wait is closer to the depth of the tree, which is
+ * rarely more than three or four.
  */
 async function collectCloudFiles(
   cloudId: CloudId,
   token: string,
   root: string | undefined,
   rel: string,
-  prefix: string,
   out: string[],
   limit: number,
-  depth: number,
 ): Promise<void> {
-  if (out.length >= limit || depth > 4) return;
-  let items: string[];
-  try {
-    items = await cloudListFolder(cloudId, token, rel, root);
-  } catch (e) {
-    // A subfolder failing mid-walk shouldn't kill results already found
-    // elsewhere in the tree, but the very first call failing means the
-    // search found nothing at all — that's worth telling findFiles about
-    // instead of silently returning an empty list indistinguishable from
-    // "no matches".
-    if (depth === 0) throw e;
-    return;
-  }
-  for (const raw of items) {
-    if (out.length >= limit) return;
-    const isDir = raw.endsWith("/");
-    const nm = isDir ? raw.slice(0, -1) : raw;
-    if (!nm || nm.startsWith(".")) continue;
-    const relChild = rel ? `${rel}/${nm}` : nm;
-    const prefixChild = prefix ? `${prefix}/${nm}` : nm;
-    if (isDir) await collectCloudFiles(cloudId, token, root, relChild, prefixChild, out, limit, depth + 1);
-    else out.push(prefixChild);
+  // Each entry is a folder still to be listed, paired with the path its
+  // contents should be reported under.
+  let level: Array<{ rel: string; prefix: string }> = [{ rel, prefix: "" }];
+
+  for (let depth = 0; depth <= 4 && level.length && out.length < limit; depth++) {
+    const next: Array<{ rel: string; prefix: string }> = [];
+
+    for (let i = 0; i < level.length && out.length < limit; i += CLOUD_WALK_WIDTH) {
+      const batch = level.slice(i, i + CLOUD_WALK_WIDTH);
+      const listings = await Promise.all(
+        batch.map(async (folder) => {
+          try {
+            return await cloudListFolder(cloudId, token, folder.rel, root);
+          } catch (e) {
+            // A subfolder failing mid-walk shouldn't kill results already
+            // found elsewhere in the tree, but the very first call failing
+            // means the search found nothing at all — that's worth telling
+            // findFiles about instead of silently returning an empty list
+            // indistinguishable from "no matches".
+            if (depth === 0) throw e;
+            return [];
+          }
+        }),
+      );
+
+      listings.forEach((items, n) => {
+        const folder = batch[n];
+        for (const raw of items) {
+          if (out.length >= limit) return;
+          const isDir = raw.endsWith("/");
+          const nm = isDir ? raw.slice(0, -1) : raw;
+          if (!nm || nm.startsWith(".")) continue;
+          const relChild = folder.rel ? `${folder.rel}/${nm}` : nm;
+          const prefixChild = folder.prefix ? `${folder.prefix}/${nm}` : nm;
+          if (isDir) next.push({ rel: relChild, prefix: prefixChild });
+          else out.push(prefixChild);
+        }
+      });
+    }
+
+    level = next;
   }
 }
 
@@ -376,9 +418,11 @@ export function StoreProvider({
   const hydratedCacheRef = useRef(false);
   /** Per-project cloud file listings for the `@` picker, plus the walks currently in flight. */
   const cloudFilesRef = useRef({
-    done: {} as Record<string, { at: number; files: string[] }>,
+    done: {} as CloudFileCache,
     pending: {} as Record<string, Promise<string[]>>,
   });
+  /** The same, for a project held on the device: cheaper, but still a whole tree walk per keystroke without it. */
+  const localFilesRef = useRef({ path: "", at: 0, files: [] as string[] });
   const saveCacheTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const knownRef = useRef({ messages: {} as Record<string, Record<string, StoredMessage>>, order: {} as Record<string, string[]> });
 
@@ -1542,6 +1586,64 @@ export function StoreProvider({
   }, []);
 
   /**
+   * Walks a cloud project once, sharing the walk with anyone else who asks for
+   * it meanwhile and remembering the result on disk. Rejects only when the
+   * project's own root could not be listed, which is the case worth reporting.
+   */
+  const walkCloudProject = useCallback(
+    (cloudId: CloudId, token: string, root: string | undefined, path: string): Promise<string[]> => {
+      const key = cloudKey(cloudId, path);
+      const inFlight = cloudFilesRef.current.pending[key];
+      if (inFlight) return inFlight;
+
+      const walk = (async () => {
+        const all: string[] = [];
+        await collectCloudFiles(cloudId, token, root, path, all, 400);
+        return all;
+      })();
+      cloudFilesRef.current.pending[key] = walk;
+      walk
+        .then((files) => {
+          cloudFilesRef.current.done[key] = { at: Date.now(), files };
+          saveCloudFiles(cloudFilesRef.current.done);
+        })
+        .catch(() => {
+          // Reported by whoever awaited the walk; a background refresh has
+          // nobody to tell, and the stale listing it failed to replace is
+          // still better than none.
+        })
+        .finally(() => {
+          delete cloudFilesRef.current.pending[key];
+        });
+      return walk;
+    },
+    [],
+  );
+
+  // The listing survives a restart, so the first `@` of a session answers from
+  // disk instead of waiting out the walk.
+  useEffect(() => {
+    loadCloudFiles().then((saved) => {
+      cloudFilesRef.current.done = { ...saved, ...cloudFilesRef.current.done };
+    });
+  }, []);
+
+  // Opening a cloud project is the moment its listing is about to be wanted
+  // and the one moment nobody is waiting on it, so the walk happens here
+  // rather than under the first keystroke.
+  useEffect(() => {
+    const s = stateRef.current;
+    const active = s.local.projects.find((p) => p.id === state.local.activeProject);
+    if (!active?.cloud) return;
+    const cloudId = active.cloud as CloudId;
+    const { token, root } = cloudCredential(s, cloudId);
+    if (!token) return;
+    const cached = cloudFilesRef.current.done[cloudKey(cloudId, active.path)];
+    if (cached && Date.now() - cached.at < CLOUD_FILES_TTL) return;
+    walkCloudProject(cloudId, token, root, active.path).catch(() => {});
+  }, [state.local.activeProject, state.local.projects, walkCloudProject]);
+
+  /**
    * Files for the `@` picker and the attach-project-file sheet. Connected to
    * a server, this asks it; otherwise it's the active on-device project's own
    * folder — a project held in a cloud drive isn't covered here, that would
@@ -1569,13 +1671,22 @@ export function StoreProvider({
     const active = s.local.projects.find((p) => p.id === s.local.activeProject);
     if (!active) return [];
     const needle = q.toLowerCase();
+    const match = (files: string[]) => files.filter((p) => p.toLowerCase().includes(needle)).slice(0, 30);
+
     if (!active.cloud) {
+      // Cheap next to a cloud walk, but it is still a whole tree of synchronous
+      // directory reads on the JS thread, and it used to run again for every
+      // character typed — which is exactly when the thread is needed for
+      // drawing the list.
+      const cache = localFilesRef.current;
+      if (cache.path === active.path && Date.now() - cache.at < LOCAL_FILES_TTL) return match(cache.files);
       try {
         const root = new Directory(active.path);
         if (!root.exists) return [];
         const all: string[] = [];
         collectLocalFiles(root, "", all, 400, 0);
-        return all.filter((p) => p.toLowerCase().includes(needle)).slice(0, 30);
+        localFilesRef.current = { path: active.path, at: Date.now(), files: all };
+        return match(all);
       } catch {
         return [];
       }
@@ -1590,36 +1701,27 @@ export function StoreProvider({
     // second. The listing is fetched once per project and filtered locally
     // after that; a walk already in flight is shared rather than started
     // twice, which is what typing quickly used to do.
-    const cacheKey = `${cloudId}:${active.path}`;
-    const cached = cloudFilesRef.current.done[cacheKey];
-    let files: string[];
-    if (cached && Date.now() - cached.at < CLOUD_FILES_TTL) {
-      files = cached.files;
-    } else {
-      let pending = cloudFilesRef.current.pending[cacheKey];
-      if (!pending) {
-        pending = (async () => {
-          const all: string[] = [];
-          await collectCloudFiles(cloudId, token, root, active.path, "", all, 200, 0);
-          return all;
-        })();
-        cloudFilesRef.current.pending[cacheKey] = pending;
-      }
-      try {
-        files = await pending;
-        cloudFilesRef.current.done[cacheKey] = { at: Date.now(), files };
-      } catch (e) {
-        // Otherwise this fails silently forever — measured live: an @ picker
-        // that never shows anything looks identical to "no files match",
-        // there was no way to tell a dead token or a network hiccup from a
-        // genuinely empty project.
-        setState((st) => ({ ...st, error: e instanceof Error ? e.message : t("store.cloudSearchFailed") }));
-        return [];
-      } finally {
-        delete cloudFilesRef.current.pending[cacheKey];
-      }
+    //
+    // A listing that has gone stale is still answered from, immediately, with
+    // the refresh left running behind it. Waiting on the refresh would put the
+    // full delay back in the user's way every ten minutes for the sake of
+    // catching files added since — and a file added on another device is
+    // exactly the rare case, while the wait would be the common one.
+    const cached = cloudFilesRef.current.done[cloudKey(cloudId, active.path)];
+    if (cached) {
+      if (Date.now() - cached.at >= CLOUD_FILES_TTL) walkCloudProject(cloudId, token, root, active.path).catch(() => {});
+      return match(cached.files);
     }
-    return files.filter((p) => p.toLowerCase().includes(needle)).slice(0, 30);
+    try {
+      return match(await walkCloudProject(cloudId, token, root, active.path));
+    } catch (e) {
+      // Otherwise this fails silently forever — measured live: an @ picker
+      // that never shows anything looks identical to "no files match",
+      // there was no way to tell a dead token or a network hiccup from a
+      // genuinely empty project.
+      setState((st) => ({ ...st, error: e instanceof Error ? e.message : t("store.cloudSearchFailed") }));
+      return [];
+    }
   }, []);
 
   /** Reads a file for the tap-to-view path in a reply: the server if connected, else the active local or cloud project. */

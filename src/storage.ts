@@ -169,6 +169,35 @@ export async function saveServerCache(c: ServerCache): Promise<void> {
   }
 }
 
+const K_CLOUD_FILES = "ocm.cloud-files";
+
+/**
+ * File listings of cloud projects, keyed by cloud and project path.
+ *
+ * Walking a cloud project costs an HTTP request per folder, so the first `@`
+ * after every launch used to sit there for seconds. Keeping the listing on
+ * disk makes a relaunch instant and leaves the walk as a background refresh;
+ * `at` is what decides when that refresh is worth doing.
+ */
+export type CloudFileCache = Record<string, { at: number; files: string[] }>;
+
+export async function loadCloudFiles(): Promise<CloudFileCache> {
+  try {
+    const raw = await AsyncStorage.getItem(K_CLOUD_FILES);
+    return raw ? (JSON.parse(raw) as CloudFileCache) : {};
+  } catch {
+    return {};
+  }
+}
+
+export async function saveCloudFiles(c: CloudFileCache): Promise<void> {
+  try {
+    await AsyncStorage.setItem(K_CLOUD_FILES, JSON.stringify(c));
+  } catch {
+    // best-effort: losing the cache only costs one more walk
+  }
+}
+
 const K_REG = "ocm.registered";
 
 export async function loadRegistered(): Promise<string[]> {
